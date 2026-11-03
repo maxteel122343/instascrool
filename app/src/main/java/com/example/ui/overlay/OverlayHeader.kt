@@ -42,7 +42,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Language
 import com.example.model.OverlayUiVersion
+import com.example.model.SearchEngine
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.IgOrange
@@ -53,13 +55,16 @@ import com.example.ui.theme.IgPurple
 fun OverlayHeader(
     username: String?,
     currentVersion: OverlayUiVersion,
+    currentEngine: SearchEngine,
     onVersionSelected: (OverlayUiVersion) -> Unit,
+    onEngineSelected: (SearchEngine) -> Unit,
     onMinimize: () -> Unit,
     onClose: () -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showVersionMenu by remember { mutableStateOf(false) }
+    var showEngineMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier

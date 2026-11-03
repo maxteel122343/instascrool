@@ -1,10 +1,6 @@
 package com.example.ui.overlay
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -27,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,17 +31,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.DarkSurface
+import com.example.data.ScrollSearchStateBus
 import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.IgPink
+import kotlinx.coroutines.delay
 
 @Composable
 fun TagsRow(
@@ -56,6 +58,23 @@ fun TagsRow(
 ) {
     var isAddingTag by remember { mutableStateOf(false) }
     var newTagInput by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(isAddingTag) {
+        if (isAddingTag) {
+            ScrollSearchStateBus.setSearchFocused(true)
+            delay(100)
+            try {
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (e: Exception) {
+                // Ignore focus request failure
+            }
+        } else {
+            ScrollSearchStateBus.setSearchFocused(false)
+        }
+    }
 
     Row(
         modifier = modifier
@@ -63,7 +82,7 @@ fun TagsRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isAddingTag) {
-            // Inline tag editor - completely crash-proof without Dialog windows
+            // Inline tag editor with active keyboard focus
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 color = DarkSurfaceElevated,
@@ -94,11 +113,19 @@ fun TagsRow(
                                     onAddCustomTag(newTagInput)
                                     newTagInput = ""
                                     isAddingTag = false
+                                    ScrollSearchStateBus.setSearchFocused(false)
+                                    keyboardController?.hide()
                                 }
                             }
                         ),
                         modifier = Modifier
-                            .width(80.dp)
+                            .width(100.dp)
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { state ->
+                                if (state.isFocused) {
+                                    ScrollSearchStateBus.setSearchFocused(true)
+                                }
+                            }
                             .testTag("inline_new_tag_input"),
                         decorationBox = { innerTextField ->
                             if (newTagInput.isEmpty()) {
@@ -117,6 +144,8 @@ fun TagsRow(
                                 onAddCustomTag(newTagInput)
                                 newTagInput = ""
                                 isAddingTag = false
+                                ScrollSearchStateBus.setSearchFocused(false)
+                                keyboardController?.hide()
                             }
                         },
                         modifier = Modifier.size(20.dp).testTag("confirm_inline_tag_btn")
@@ -134,6 +163,8 @@ fun TagsRow(
                         onClick = {
                             newTagInput = ""
                             isAddingTag = false
+                            ScrollSearchStateBus.setSearchFocused(false)
+                            keyboardController?.hide()
                         },
                         modifier = Modifier.size(20.dp).testTag("cancel_inline_tag_btn")
                     ) {

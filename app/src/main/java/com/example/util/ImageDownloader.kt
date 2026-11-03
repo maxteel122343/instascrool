@@ -13,6 +13,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.util.Base64
 import android.util.Log
+import android.webkit.CookieManager
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,44 +27,80 @@ import java.net.URL
 
 object ImageDownloader {
     private const val TAG = "ImageDownloader"
+    private const val DEFAULT_USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+    private const val DEFAULT_REFERRER = "https://www.google.com/"
+
     private val scope = CoroutineScope(Dispatchers.IO)
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun downloadPhoto(context: Context, photoUrl: String, title: String? = null) {
+        downloadPhoto(context, photoUrl, DEFAULT_REFERRER, title)
+    }
+
+    fun downloadPhoto(context: Context, photoUrl: String, referrer: String?, title: String?) {
         if (photoUrl.isBlank()) {
             showToast(context, "URL da imagem inválida")
             return
         }
 
-        showToast(context, "Iniciando download...")
+        val effectiveReferrer = referrer?.ifBlank { DEFAULT_REFERRER } ?: DEFAULT_REFERRER
 
         if (photoUrl.startsWith("data:image")) {
-            // Base64 encoded image
-            scope.launch {
-                saveBase64Image(context, photoUrl, title)
-            }
+            // Direct Base64 captured from WebView Canvas - 100% immune to 403 Forbidden!
+            downloadBase64(context, photoUrl, title)
         } else if (photoUrl.startsWith("http://") || photoUrl.startsWith("https://")) {
-            // Standard HTTP/HTTPS image
+            // Standard HTTP/HTTPS with required Google Referer and Cookie headers
+            showToast(context, "Iniciando download da foto...")
             scope.launch {
-                downloadHttpImage(context, photoUrl, title)
+                downloadHttpImage(context, photoUrl, effectiveReferrer, title)
             }
         } else {
             showToast(context, "Formato de imagem não suportado")
         }
     }
 
-    private suspend fun downloadHttpImage(context: Context, photoUrl: String, title: String?) {
+    fun downloadBase64(context: Context, base64Data: String, title: String? = null) {
+        showToast(context, "Salvando imagem capturada...")
+        scope.launch {
+            saveBase64Image(context, base64Data, title)
+        }
+    }
+
+    private suspend fun downloadHttpImage(
+        context: Context,
+        photoUrl: String,
+        referrer: String,
+        title: String?
+    ) {
         try {
-            // Download bytes directly to ensure high resolution and support all image hosts
             withContext(Dispatchers.IO) {
                 val url = URL(photoUrl)
                 val connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 10000
-                connection.readTimeout = 15000
-                connection.setRequestProperty(
-                    "User-Agent",
-                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36"
-                )
+                connection.connectTimeout = 12000
+                connection.readTimeout = 18000
+                connection.instanceFollowRedirects = true
+
+                // CRITICAL: Google blocks image requests without the proper Referer and User-Agent
+                connection.setRequestProperty("User-Agent", DEFAULT_USER_AGENT)
+                connection.setRequestProperty("Referer", referrer)
+                connection.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+                connection.setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
+                connection.setRequestProperty("sec-fetch-dest", "image")
+                connection.setRequestProperty("sec-fetch-mode", "no-cors")
+                connection.setRequestProperty("sec-fetch-site", "cross-site")
+
+                // Pass cookies from WebView session if available
+                try {
+                    val cookies = CookieManager.getInstance().getCookie(photoUrl)
+                        ?: CookieManager.getInstance().getCookie(referrer)
+                    if (!cookies.isNullOrBlank()) {
+                        connection.setRequestProperty("Cookie", cookies)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Cookie lookup failed: ${e.message}")
+                }
+
                 connection.connect()
 
                 if (connection.responseCode in 200..299) {
@@ -74,33 +111,49 @@ object ImageDownloader {
                     if (bitmap != null) {
                         saveBitmapToGallery(context, bitmap, title ?: "scrollsearch")
                     } else {
-                        // Fallback to DownloadManager
-                        enqueueDownloadManager(context, photoUrl, title)
+                        enqueueDownloadManager(context, photoUrl, referrer, title)
                     }
                 } else {
-                    enqueueDownloadManager(context, photoUrl, title)
+                    Log.w(TAG, "HTTP code ${connection.responseCode}, trying DownloadManager with Referer")
+                    enqueueDownloadManager(context, photoUrl, referrer, title)
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Direct download failed, falling back to DownloadManager: ${e.message}")
-            enqueueDownloadManager(context, photoUrl, title)
+            enqueueDownloadManager(context, photoUrl, referrer, title)
         }
     }
 
-    private fun enqueueDownloadManager(context: Context, photoUrl: String, title: String?) {
+    private fun enqueueDownloadManager(
+        context: Context,
+        photoUrl: String,
+        referrer: String,
+        title: String?
+    ) {
         try {
             val fileName = "scrollsearch_${System.currentTimeMillis()}.jpg"
             val request = DownloadManager.Request(Uri.parse(photoUrl)).apply {
                 setTitle(title ?: "ScrollSearch Imagem")
-                setDescription("Baixando foto em alta qualidade")
+                setDescription("Baixando foto")
                 setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 setAllowedOverMetered(true)
                 setAllowedOverRoaming(true)
                 setDestinationInExternalPublicDir(Environment.DIRECTORY_PICTURES, "ScrollSearch/$fileName")
+
+                // Provide Referer and User-Agent to avoid 403 Forbidden from Google
+                addRequestHeader("Referer", referrer)
+                addRequestHeader("User-Agent", DEFAULT_USER_AGENT)
+                try {
+                    val cookies = CookieManager.getInstance().getCookie(photoUrl)
+                        ?: CookieManager.getInstance().getCookie(referrer)
+                    if (!cookies.isNullOrBlank()) {
+                        addRequestHeader("Cookie", cookies)
+                    }
+                } catch (_: Exception) {}
             }
             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
             dm?.enqueue(request)
-            showToast(context, "Download agendado na barra de notificações!")
+            showToast(context, "Download agendado com sucesso!")
         } catch (e: Exception) {
             Log.e(TAG, "DownloadManager failed: ${e.message}")
             showToast(context, "Erro ao baixar imagem: ${e.message}")
@@ -113,9 +166,9 @@ object ImageDownloader {
             val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
             val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
             if (bitmap != null) {
-                saveBitmapToGallery(context, bitmap, title ?: "scrollsearch_base64")
+                saveBitmapToGallery(context, bitmap, title ?: "scrollsearch_captured")
             } else {
-                showToast(context, "Erro ao decodificar imagem base64")
+                showToast(context, "Erro ao processar imagem capturada")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error saving base64: ${e.message}")
@@ -123,7 +176,7 @@ object ImageDownloader {
         }
     }
 
-    private fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title: String) {
+    fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title: String = "scrollsearch") {
         val fileName = "IMG_${System.currentTimeMillis()}.jpg"
         var outputStream: OutputStream? = null
 
@@ -150,7 +203,7 @@ object ImageDownloader {
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 95, outputStream)
                 outputStream.flush()
                 outputStream.close()
-                showToast(context, "Foto salva na pasta Imagens/ScrollSearch!")
+                showToast(context, "Foto salva com sucesso na galeria!")
             } else {
                 showToast(context, "Não foi possível abrir destino para salvar")
             }

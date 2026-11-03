@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,17 +30,7 @@ import com.example.data.ScrollSearchStateBus
 import com.example.model.OverlayUiVersion
 import com.example.model.PhotoItem
 import com.example.overlay.FastWebViewManager
-import com.example.ui.overlay.views.F1PurePhotoView
-import com.example.ui.overlay.views.F2PurePhotoView
-import com.example.ui.overlay.views.F5PurePhotoView
-import com.example.ui.overlay.views.F6PurePhotoView
-import com.example.ui.overlay.views.F7PurePhotoView
 import com.example.ui.overlay.views.PureFloatingControlsPill
-import com.example.ui.overlay.views.V1BottomBarView
-import com.example.ui.overlay.views.V2SidebarView
-import com.example.ui.overlay.views.V5BottomSheetView
-import com.example.ui.overlay.views.V6VerticalPhotosView
-import com.example.ui.overlay.views.V7HorizontalPhotosView
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ScrollSearchTheme
 
@@ -57,12 +48,16 @@ fun OverlayRootComposable(
     val selectedTag by ScrollSearchStateBus.selectedTag.collectAsState()
     val searchBarText by ScrollSearchStateBus.searchBarText.collectAsState()
     val heightRatio by ScrollSearchStateBus.heightRatio.collectAsState()
-    val photos by ScrollSearchStateBus.photos.collectAsState()
-    val isLoadingPhotos by ScrollSearchStateBus.isLoadingPhotos.collectAsState()
-    val isV1Expanded by ScrollSearchStateBus.isV1WebViewExpanded.collectAsState()
     val isPhotoDetailOpen by ScrollSearchStateBus.isPhotoDetailOpen.collectAsState()
+    val fullscreenImages by ScrollSearchStateBus.fullscreenImages.collectAsState()
+    val fullscreenInitialIndex by ScrollSearchStateBus.fullscreenInitialIndex.collectAsState()
 
-    var selectedPhotoDetail by remember { mutableStateOf<PhotoItem?>(null) }
+    val capturedBitmap by ScrollSearchStateBus.currentCapturedBitmap.collectAsState()
+
+    // Synchronize pure mode CSS when switching between V and F versions
+    LaunchedEffect(activeVersion) {
+        fastWebViewManager.setPureMode(activeVersion.isCleanPhotoOnly)
+    }
 
     ScrollSearchTheme {
         if (isBubbleCollapsed) {
@@ -75,102 +70,52 @@ fun OverlayRootComposable(
                 onDrag = onBubbleDrag,
                 modifier = modifier
             )
-        } else if (isPhotoDetailOpen && selectedPhotoDetail != null) {
-            // Fullscreen photo inspector dialog with download button
+        } else if (isPhotoDetailOpen && (fullscreenImages.isNotEmpty() || capturedBitmap != null)) {
             PhotoDetailDialog(
-                photo = selectedPhotoDetail!!,
+                images = fullscreenImages,
+                initialIndex = fullscreenInitialIndex,
                 onDismiss = {
-                    selectedPhotoDetail = null
-                    ScrollSearchStateBus.setPhotoDetailOpen(false)
+                    ScrollSearchStateBus.closeFullscreenPhoto()
                 }
             )
         } else {
-            // Main Overlay (V versions with tools or F versions with pure photos)
-            when (activeVersion) {
-                // ==========================================
-                // F VERSIONS (PURE CLEAN HIGH QUALITY PHOTOS)
-                // ==========================================
-                OverlayUiVersion.F1 -> {
-                    // F1: Barra Inferior - Só Fotos Grandes Horizontais
-                    Box(modifier = modifier.fillMaxSize()) {
-                        F1PurePhotoView(
-                            photos = photos,
-                            isLoading = isLoadingPhotos,
-                            onPhotoClick = {
-                                selectedPhotoDetail = it
-                                ScrollSearchStateBus.setPhotoDetailOpen(true)
-                            },
-                            modifier = Modifier.fillMaxSize()
+            if (activeVersion.isCleanPhotoOnly) {
+                // ========================================================
+                // F VERSIONS (F1, F2, F5, F6, F7): PURE PHOTOS WEBVIEW
+                // Displays Google Images with headers, search bars, chips,
+                // and footers hidden via injected CSS, leaving ONLY the
+                // clean grid of photos visible directly on screen.
+                // ========================================================
+                Box(
+                    modifier = modifier
+                        .fillMaxSize()
+                        .clip(
+                            if (activeVersion == OverlayUiVersion.F2) {
+                                RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
+                            } else {
+                                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                            }
                         )
-
-                        PureFloatingControlsPill(
-                            currentVersion = activeVersion,
-                            username = username,
-                            tags = tags,
-                            selectedTag = selectedTag,
-                            onTagSelected = { ScrollSearchStateBus.selectTag(it) },
-                            onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) },
-                            onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
-                            onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
-                            onClose = onCloseOverlay,
-                            onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() },
-                            modifier = Modifier.align(Alignment.TopEnd)
-                        )
-                    }
-                }
-
-                OverlayUiVersion.F2 -> {
-                    // F2: Sidebar Lateral - Só Fotos Verticais
-                    Box(modifier = modifier.fillMaxSize()) {
-                        F2PurePhotoView(
-                            photos = photos,
-                            isLoading = isLoadingPhotos,
-                            onPhotoClick = {
-                                selectedPhotoDetail = it
-                                ScrollSearchStateBus.setPhotoDetailOpen(true)
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-
-                        PureFloatingControlsPill(
-                            currentVersion = activeVersion,
-                            username = username,
-                            tags = tags,
-                            selectedTag = selectedTag,
-                            onTagSelected = { ScrollSearchStateBus.selectTag(it) },
-                            onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) },
-                            onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
-                            onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
-                            onClose = onCloseOverlay,
-                            onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() },
-                            modifier = Modifier.align(Alignment.TopEnd)
-                        )
-                    }
-                }
-
-                OverlayUiVersion.F5,
-                OverlayUiVersion.F6,
-                OverlayUiVersion.F7 -> {
-                    // F5, F6, F7: Painéis Inferiores Redimensionáveis com Fotos Puras
-                    Box(
-                        modifier = modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            // Top border resize handle
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Top drag handle for resizable panels (F5, F6, F7)
+                        if (activeVersion == OverlayUiVersion.F5 ||
+                            activeVersion == OverlayUiVersion.F6 ||
+                            activeVersion == OverlayUiVersion.F7
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(20.dp)
-                                    .background(Color.Black.copy(alpha = 0.5f))
+                                    .background(Color.Black.copy(alpha = 0.70f))
                                     .pointerInput(Unit) {
                                         detectVerticalDragGestures { change, dragAmount ->
                                             change.consume()
                                             val deltaRatio = -dragAmount / 1200f
                                             ScrollSearchStateBus.setHeightRatio(heightRatio + deltaRatio)
                                         }
-                                    },
+                                    }
+                                    .testTag("top_border_resize_handle_f"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Box(
@@ -178,186 +123,72 @@ fun OverlayRootComposable(
                                         .width(44.dp)
                                         .height(4.dp)
                                         .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.4f))
+                                        .background(Color.White.copy(alpha = 0.5f))
                                 )
                             }
-
-                            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                                when (activeVersion) {
-                                    OverlayUiVersion.F5 -> {
-                                        F5PurePhotoView(
-                                            photos = photos,
-                                            isLoading = isLoadingPhotos,
-                                            onPhotoClick = {
-                                                selectedPhotoDetail = it
-                                                ScrollSearchStateBus.setPhotoDetailOpen(true)
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    OverlayUiVersion.F6 -> {
-                                        F6PurePhotoView(
-                                            photos = photos,
-                                            isLoading = isLoadingPhotos,
-                                            onPhotoClick = {
-                                                selectedPhotoDetail = it
-                                                ScrollSearchStateBus.setPhotoDetailOpen(true)
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    OverlayUiVersion.F7 -> {
-                                        F7PurePhotoView(
-                                            photos = photos,
-                                            isLoading = isLoadingPhotos,
-                                            onPhotoClick = {
-                                                selectedPhotoDetail = it
-                                                ScrollSearchStateBus.setPhotoDetailOpen(true)
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    else -> Unit
-                                }
-                            }
                         }
 
-                        // Minimalist floating control pill
-                        PureFloatingControlsPill(
-                            currentVersion = activeVersion,
-                            username = username,
-                            tags = tags,
-                            selectedTag = selectedTag,
-                            onTagSelected = { ScrollSearchStateBus.selectTag(it) },
-                            onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) },
-                            onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
-                            onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
-                            onClose = onCloseOverlay,
-                            onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 16.dp)
+                        // Google Images WebView in F mode (Clean pure photos)
+                        AndroidWebViewContainer(
+                            fastWebViewManager = fastWebViewManager,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
+
+                    // Floating minimalist control pill (version selector, tags, close, minimize)
+                    PureFloatingControlsPill(
+                        currentVersion = activeVersion,
+                        username = username,
+                        tags = tags,
+                        selectedTag = selectedTag,
+                        onTagSelected = { ScrollSearchStateBus.selectTag(it) },
+                        onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) },
+                        onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
+                        onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
+                        onClose = onCloseOverlay,
+                        onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() },
+                        modifier = Modifier
+                            .align(if (activeVersion == OverlayUiVersion.F2) Alignment.TopStart else Alignment.TopEnd)
+                            .padding(
+                                top = if (activeVersion == OverlayUiVersion.F5 ||
+                                    activeVersion == OverlayUiVersion.F6 ||
+                                    activeVersion == OverlayUiVersion.F7
+                                ) 22.dp else 4.dp,
+                                start = if (activeVersion == OverlayUiVersion.F2) 4.dp else 0.dp,
+                                end = if (activeVersion == OverlayUiVersion.F2) 0.dp else 4.dp
+                            )
+                    )
                 }
-
-                // ==========================================
-                // V VERSIONS (STANDARD CONTROLS & WEBVIEWS)
-                // ==========================================
-                OverlayUiVersion.V2 -> {
-                    // V2: Sidebar lateral layout
-                    Surface(
-                        shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
-                        color = DarkSurface,
-                        shadowElevation = 12.dp,
-                        modifier = modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            OverlayHeader(
-                                username = username,
-                                currentVersion = activeVersion,
-                                onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
-                                onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
-                                onClose = onCloseOverlay,
-                                onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() }
-                            )
-
-                            TagsRow(
-                                tags = tags,
-                                selectedTag = selectedTag,
-                                onTagSelected = { ScrollSearchStateBus.selectTag(it) },
-                                onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) }
-                            )
-
-                            SearchBarComponent(
-                                query = searchBarText,
-                                onQueryChange = { ScrollSearchStateBus.setSearchBarText(it) },
-                                placeholder = "@${username ?: "criador"}...",
-                                onSearchSubmitted = { ScrollSearchStateBus.setSearchBarText(it) },
-                                onFocusChanged = { ScrollSearchStateBus.setSearchFocused(it) }
-                            )
-
-                            V2SidebarView(
-                                photos = photos,
-                                isLoading = isLoadingPhotos,
-                                onPhotoClick = {
-                                    selectedPhotoDetail = it
-                                    ScrollSearchStateBus.setPhotoDetailOpen(true)
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-
-                OverlayUiVersion.V1 -> {
-                    // V1: Barra inferior com cards
-                    Surface(
-                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                        color = DarkSurface,
-                        shadowElevation = 14.dp,
-                        modifier = modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            OverlayHeader(
-                                username = username,
-                                currentVersion = activeVersion,
-                                onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
-                                onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
-                                onClose = onCloseOverlay,
-                                onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() }
-                            )
-
-                            TagsRow(
-                                tags = tags,
-                                selectedTag = selectedTag,
-                                onTagSelected = { ScrollSearchStateBus.selectTag(it) },
-                                onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) }
-                            )
-
-                            SearchBarComponent(
-                                query = searchBarText,
-                                onQueryChange = { ScrollSearchStateBus.setSearchBarText(it) },
-                                placeholder = "Buscar com @${username ?: "criador"}...",
-                                onSearchSubmitted = { ScrollSearchStateBus.setSearchBarText(it) },
-                                onFocusChanged = { ScrollSearchStateBus.setSearchFocused(it) }
-                            )
-
-                            V1BottomBarView(
-                                photos = photos,
-                                isLoading = isLoadingPhotos,
-                                onPhotoClick = {
-                                    selectedPhotoDetail = it
-                                    ScrollSearchStateBus.setPhotoDetailOpen(true)
-                                },
-                                showWebView = isV1Expanded,
-                                onToggleWebView = {
-                                    ScrollSearchStateBus.setV1WebViewExpanded(!isV1Expanded)
-                                },
-                                fastWebViewManager = fastWebViewManager,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-
-                OverlayUiVersion.V5,
-                OverlayUiVersion.V6,
-                OverlayUiVersion.V7 -> {
-                    // V5, V6, V7: Bottom panels com redimensionamento
-                    Surface(
-                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                        color = DarkSurface,
-                        shadowElevation = 16.dp,
-                        modifier = modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
+            } else {
+                // ========================================================
+                // V VERSIONS (V1, V2, V5, V6, V7): FULL CONTROLS + WEBVIEW
+                // Displays OverlayHeader, TagsRow, SearchBarComponent, and
+                // the full Google Images WebView in all V versions.
+                // ========================================================
+                Surface(
+                    shape = if (activeVersion == OverlayUiVersion.V2) {
+                        RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
+                    } else {
+                        RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                    },
+                    color = DarkSurface,
+                    shadowElevation = 16.dp,
+                    modifier = modifier
+                        .fillMaxSize()
+                        .clip(
+                            if (activeVersion == OverlayUiVersion.V2) {
+                                RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
+                            } else {
+                                RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                            }
+                        )
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Top resize drag handle for V5, V6, V7
+                        if (activeVersion == OverlayUiVersion.V5 ||
+                            activeVersion == OverlayUiVersion.V6 ||
+                            activeVersion == OverlayUiVersion.V7
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -379,60 +210,39 @@ fun OverlayRootComposable(
                                     onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() }
                                 )
                             }
-
-                            TagsRow(
-                                tags = tags,
-                                selectedTag = selectedTag,
-                                onTagSelected = { ScrollSearchStateBus.selectTag(it) },
-                                onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) }
+                        } else {
+                            OverlayHeader(
+                                username = username,
+                                currentVersion = activeVersion,
+                                onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
+                                onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
+                                onClose = onCloseOverlay,
+                                onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() }
                             )
-
-                            SearchBarComponent(
-                                query = searchBarText,
-                                onQueryChange = { ScrollSearchStateBus.setSearchBarText(it) },
-                                placeholder = "Pesquisar imagens com @${username ?: "criador"}...",
-                                onSearchSubmitted = { ScrollSearchStateBus.setSearchBarText(it) },
-                                onFocusChanged = { ScrollSearchStateBus.setSearchFocused(it) }
-                            )
-
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f)
-                            ) {
-                                when (activeVersion) {
-                                    OverlayUiVersion.V5 -> {
-                                        V5BottomSheetView(
-                                            fastWebViewManager = fastWebViewManager,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    OverlayUiVersion.V6 -> {
-                                        V6VerticalPhotosView(
-                                            photos = photos,
-                                            isLoading = isLoadingPhotos,
-                                            onPhotoClick = {
-                                                selectedPhotoDetail = it
-                                                ScrollSearchStateBus.setPhotoDetailOpen(true)
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    OverlayUiVersion.V7 -> {
-                                        V7HorizontalPhotosView(
-                                            photos = photos,
-                                            isLoading = isLoadingPhotos,
-                                            onPhotoClick = {
-                                                selectedPhotoDetail = it
-                                                ScrollSearchStateBus.setPhotoDetailOpen(true)
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    else -> Unit
-                                }
-                            }
                         }
+
+                        TagsRow(
+                            tags = tags,
+                            selectedTag = selectedTag,
+                            onTagSelected = { ScrollSearchStateBus.selectTag(it) },
+                            onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) }
+                        )
+
+                        SearchBarComponent(
+                            query = searchBarText,
+                            onQueryChange = { ScrollSearchStateBus.setSearchBarText(it) },
+                            placeholder = "Pesquisar imagens com @${username ?: "criador"}...",
+                            onSearchSubmitted = { ScrollSearchStateBus.setSearchBarText(it) },
+                            onFocusChanged = { ScrollSearchStateBus.setSearchFocused(it) }
+                        )
+
+                        // Google Images WebView in all V versions!
+                        AndroidWebViewContainer(
+                            fastWebViewManager = fastWebViewManager,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        )
                     }
                 }
             }

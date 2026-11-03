@@ -1,7 +1,9 @@
 package com.example.data
 
+import com.example.model.ImageQuality
 import com.example.model.OverlayUiVersion
 import com.example.model.PhotoItem
+import com.example.model.SearchEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,6 +16,12 @@ object ScrollSearchStateBus {
 
     private val _currentUsername = MutableStateFlow<String?>("cristiano")
     val currentUsername: StateFlow<String?> = _currentUsername.asStateFlow()
+
+    private val _selectedSearchEngine = MutableStateFlow(SearchEngine.GOOGLE)
+    val selectedSearchEngine: StateFlow<SearchEngine> = _selectedSearchEngine.asStateFlow()
+
+    private val _imageQuality = MutableStateFlow(ImageQuality.HIGH)
+    val imageQuality: StateFlow<ImageQuality> = _imageQuality.asStateFlow()
 
     private val _isDarkTheme = MutableStateFlow(true)
     val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
@@ -60,6 +68,15 @@ object ScrollSearchStateBus {
     private val _isPhotoDetailOpen = MutableStateFlow(false)
     val isPhotoDetailOpen: StateFlow<Boolean> = _isPhotoDetailOpen.asStateFlow()
 
+    private val _currentCapturedBitmap = MutableStateFlow<android.graphics.Bitmap?>(null)
+    val currentCapturedBitmap: StateFlow<android.graphics.Bitmap?> = _currentCapturedBitmap.asStateFlow()
+
+    private val _fullscreenImages = MutableStateFlow<List<String>>(emptyList())
+    val fullscreenImages: StateFlow<List<String>> = _fullscreenImages.asStateFlow()
+
+    private val _fullscreenInitialIndex = MutableStateFlow(0)
+    val fullscreenInitialIndex: StateFlow<Int> = _fullscreenInitialIndex.asStateFlow()
+
     private val _isV1WebViewExpanded = MutableStateFlow(false)
     val isV1WebViewExpanded: StateFlow<Boolean> = _isV1WebViewExpanded.asStateFlow()
 
@@ -97,12 +114,24 @@ object ScrollSearchStateBus {
         }
     }
 
+    fun setSearchEngine(engine: SearchEngine) {
+        if (_selectedSearchEngine.value != engine) {
+            _selectedSearchEngine.value = engine
+            notifyEffectiveQueryChanged()
+        }
+    }
+
     fun setVersion(version: OverlayUiVersion) {
         _activeVersion.value = version
     }
 
     fun toggleTheme() {
         _isDarkTheme.value = !_isDarkTheme.value
+    }
+
+    fun setImageQuality(quality: ImageQuality) {
+        _imageQuality.value = quality
+        notifyEffectiveQueryChanged()
     }
 
     fun setDarkTheme(dark: Boolean) {
@@ -184,6 +213,56 @@ object ScrollSearchStateBus {
 
     fun setPhotoDetailOpen(open: Boolean) {
         _isPhotoDetailOpen.value = open
+    }
+
+    fun openFullscreenPhoto(
+        selectedUrl: String,
+        allUrls: List<String> = emptyList(),
+        explicitIndex: Int = -1
+    ) {
+        _currentCapturedBitmap.value = null
+        val list = if (allUrls.isNotEmpty()) allUrls else listOf(selectedUrl)
+        val index = if (explicitIndex in list.indices) {
+            explicitIndex
+        } else {
+            val idx = list.indexOf(selectedUrl)
+            if (idx >= 0) idx else 0
+        }
+        _fullscreenImages.value = list
+        _fullscreenInitialIndex.value = index
+        _isPhotoDetailOpen.value = true
+    }
+
+    fun openFullscreenWithBitmap(
+        bitmap: android.graphics.Bitmap?,
+        selectedUrl: String,
+        allUrls: List<String> = emptyList(),
+        explicitIndex: Int = -1
+    ) {
+        _currentCapturedBitmap.value = if (bitmap != null && bitmap.width > 10 && bitmap.height > 10) bitmap else null
+        val list = if (allUrls.isNotEmpty()) {
+            allUrls
+        } else if (selectedUrl.isNotBlank()) {
+            listOf(selectedUrl)
+        } else {
+            emptyList()
+        }
+        val index = if (explicitIndex in list.indices) {
+            explicitIndex
+        } else if (selectedUrl.isNotBlank()) {
+            val idx = list.indexOf(selectedUrl)
+            if (idx >= 0) idx else 0
+        } else {
+            0
+        }
+        _fullscreenImages.value = list
+        _fullscreenInitialIndex.value = index
+        _isPhotoDetailOpen.value = true
+    }
+
+    fun closeFullscreenPhoto() {
+        _currentCapturedBitmap.value = null
+        _isPhotoDetailOpen.value = false
     }
 
     fun setV1WebViewExpanded(expanded: Boolean) {

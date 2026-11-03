@@ -68,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ScrollSearchStateBus
+import com.example.model.ImageQuality
 import com.example.model.OverlayUiVersion
 import com.example.service.FloatingOverlayService
 import com.example.ui.overlay.AddTagDialog
@@ -98,6 +99,7 @@ fun DashboardScreen(
     val selectedTag by ScrollSearchStateBus.selectedTag.collectAsState()
     val detectionCount by ScrollSearchStateBus.detectionCount.collectAsState()
     val isInstagramForeground by ScrollSearchStateBus.isInstagramForeground.collectAsState()
+    val imageQuality by ScrollSearchStateBus.imageQuality.collectAsState()
 
     var showAddTagDialog by remember { mutableStateOf(false) }
 
@@ -318,6 +320,125 @@ fun DashboardScreen(
                                 onClick = onRequestStoragePermission,
                                 modifier = Modifier.weight(1f)
                             )
+                        }
+                    }
+                }
+            }
+
+            // Image Quality Configuration (applied to F versions)
+            item {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                    modifier = Modifier.fillMaxWidth().testTag("image_quality_card")
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(IgOrange.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Speed,
+                                    contentDescription = "Qualidade",
+                                    tint = IgOrange,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Qualidade da Imagem (Versões F)",
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Defina a resolução exibida nas versões puras de foto",
+                                    color = Color(0xFFA0A0C0),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Options: Baixa, Média, Alta, Altíssima
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ImageQuality.entries.forEach { quality ->
+                                val isSelected = imageQuality == quality
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) IgOrange.copy(alpha = 0.20f) else DarkSurfaceElevated,
+                                    border = if (isSelected) {
+                                        androidx.compose.foundation.BorderStroke(1.5.dp, IgOrange)
+                                    } else null,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { ScrollSearchStateBus.setImageQuality(quality) }
+                                        .testTag("quality_option_${quality.code}")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clip(CircleShape)
+                                                .border(
+                                                    width = 2.dp,
+                                                    color = if (isSelected) IgOrange else Color.Gray,
+                                                    shape = CircleShape
+                                                )
+                                                .padding(3.dp)
+                                                .background(
+                                                    if (isSelected) IgOrange else Color.Transparent,
+                                                    CircleShape
+                                                )
+                                        )
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = quality.title,
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = quality.subtitle,
+                                                color = Color(0xFFA0A0B8),
+                                                fontSize = 10.sp
+                                            )
+                                        }
+
+                                        if (isSelected) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = IgOrange,
+                                                modifier = Modifier.padding(start = 6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Ativa",
+                                                    color = Color.White,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

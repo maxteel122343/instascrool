@@ -63,25 +63,30 @@ import com.example.ui.theme.IgOrange
 import com.example.ui.theme.IgPink
 import com.example.util.ImageDownloader
 
+import com.example.model.SearchEngine
+
 /**
- * Minimalist floating pill with version switch, tags toggle, refresh, minimize, and close.
- * Allows quick switching between V and F versions and managing tags without polluting the clean photo view.
+ * Minimalist floating pill with version switch, search engine switch, tags toggle, refresh, minimize, and close.
+ * Allows quick switching between V and F versions and managing engines without polluting the clean photo view.
  */
 @Composable
 fun PureFloatingControlsPill(
     currentVersion: OverlayUiVersion,
+    currentEngine: SearchEngine,
     username: String?,
     tags: List<String>,
     selectedTag: String,
     onTagSelected: (String) -> Unit,
     onAddCustomTag: (String) -> Unit,
     onVersionSelected: (OverlayUiVersion) -> Unit,
+    onEngineSelected: (SearchEngine) -> Unit,
     onMinimize: () -> Unit,
     onClose: () -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showEngineMenu by remember { mutableStateOf(false) }
     var showTagsRow by remember { mutableStateOf(false) }
 
     Column(
@@ -150,6 +155,48 @@ fun PureFloatingControlsPill(
                                 onClick = {
                                     showMenu = false
                                     onVersionSelected(version)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Search Engine pill right beside version
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showEngineMenu = true }
+                            .padding(horizontal = 5.dp, vertical = 4.dp)
+                            .testTag("f_engine_picker_button")
+                    ) {
+                        Text(
+                            text = currentEngine.shortName,
+                            color = Color(0xFF00E5FF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showEngineMenu,
+                        onDismissRequest = { showEngineMenu = false },
+                        modifier = Modifier.background(DarkSurfaceElevated)
+                    ) {
+                        SearchEngine.entries.forEach { engine ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = engine.displayName,
+                                        color = if (engine == currentEngine) Color(0xFF00E5FF) else Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (engine == currentEngine) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                onClick = {
+                                    showEngineMenu = false
+                                    onEngineSelected(engine)
                                 }
                             )
                         }
@@ -536,7 +583,7 @@ fun F7PurePhotoView(
                     Box(
                         modifier = Modifier
                             .fillParentMaxHeight()
-                            .fillParentMaxWidth(0.92f)
+                            .fillParentMaxWidth(1f)
                             .clip(RoundedCornerShape(16.dp))
                             .clickable { onPhotoClick(photo) }
                             .testTag("f7_photo_card_$index")

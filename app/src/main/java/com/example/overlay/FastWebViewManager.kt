@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -16,15 +17,26 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
+import com.example.data.ScrollSearchStateBus
 import com.example.util.GoogleSearchHelper
+import com.example.util.ImageDownloader
 import org.json.JSONArray
+import org.json.JSONTokener
 
 class FastWebViewManager(private val context: Context) {
 
     private var webView: WebView? = null
     private var currentUrl: String? = null
+    private var currentQuery: String? = null
     private var lastLoadTimestamp: Long = 0L
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    private var isPureMode: Boolean = false
+    private var currentQualityParam: String = ""
+    private var isUsingAlternativeEngine: Boolean = false
 
     var onPageStartedListener: (() -> Unit)? = null
     var onPageFinishedListener: (() -> Unit)? = null
@@ -35,12 +47,56 @@ class FastWebViewManager(private val context: Context) {
         initWebView()
     }
 
+    private fun captureBitmapFromWebView(left: Float, top: Float, width: Float, height: Float, dpr: Float): Bitmap? {
+        val wv = webView ?: return null
+        if (wv.width <= 0 || wv.height <= 0 || width <= 0 || height <= 0) return null
+        return try {
+            val fullBmp = Bitmap.createBitmap(wv.width, wv.height, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(fullBmp)
+            wv.draw(canvas)
+
+            val density = wv.resources.displayMetrics.density
+            val cropX = (left * density).toInt().coerceIn(0, wv.width - 1)
+            val cropY = (top * density).toInt().coerceIn(0, wv.height - 1)
+            val cropW = (width * density).toInt().coerceIn(1, wv.width - cropX)
+            val cropH = (height * density).toInt().coerceIn(1, wv.height - cropY)
+
+            val cropped = Bitmap.createBitmap(fullBmp, cropX, cropY, cropW, cropH)
+            fullBmp.recycle()
+            cropped
+        } catch (e: Exception) {
+            Log.e("FastWebViewManager", "Failed to capture bitmap from WebView: ${e.message}")
+            null
+        }
+    }
+
+    private fun parseUrlsJson(allImagesJson: String?): List<String> {
+        val urls = mutableListOf<String>()
+        if (!allImagesJson.isNullOrBlank()) {
+            try {
+                val unescaped = if (allImagesJson.startsWith("\"") && allImagesJson.endsWith("\"")) {
+                    JSONTokener(allImagesJson).nextValue().toString()
+                } else {
+                    allImagesJson
+                }
+                val arr = JSONArray(unescaped)
+                for (i in 0 until arr.length()) {
+                    val u = arr.optString(i)
+                    if (u.isNotBlank()) urls.add(u)
+                }
+            } catch (e: Exception) {
+                Log.e("FastWebViewManager", "Error parsing allImagesJson: ${e.message}")
+            }
+        }
+        return urls
+    }
+
     private inner class ScrollSearchBridge {
         @JavascriptInterface
         fun onReceiveImages(jsonString: String) {
             try {
                 val clean = if (jsonString.startsWith("\"") && jsonString.endsWith("\"")) {
-                    org.json.JSONTokener(jsonString).nextValue().toString()
+                    JSONTokener(jsonString).nextValue().toString()
                 } else {
                     jsonString
                 }
@@ -61,6 +117,105 @@ class FastWebViewManager(private val context: Context) {
                 Log.e("FastWebViewManager", "Bridge JSON error: ${e.message}")
             }
         }
+
+        @JavascriptInterface
+        fun onCaptureAndOpenFullscreenWithIndex(
+            left: Float,
+            top: Float,
+            width: Float,
+            height: Float,
+            dpr: Float,
+            imageUrl: String,
+            allImagesJson: String? = null,
+            index: Int = -1
+        ) {
+            mainHandler.post {
+                val captured = captureBitmapFromWebView(left, top, width, height, dpr)
+                val urls = parseUrlsJson(allImagesJson)
+                ScrollSearchStateBus.openFullscreenWithBitmap(captured, imageUrl.trim(), urls, index)
+            }
+        }
+
+        @JavascriptInterface
+        fun onCaptureAndOpenFullscreen(
+            left: Float,
+            top: Float,
+            width: Float,
+            height: Float,
+            dpr: Float,
+            imageUrl: String,
+            allImagesJson: String? = null
+        ) {
+            mainHandler.post {
+                val captured = captureBitmapFromWebView(left, top, width, height, dpr)
+                val urls = parseUrlsJson(allImagesJson)
+                ScrollSearchStateBus.openFullscreenWithBitmap(captured, imageUrl.trim(), urls, -1)
+            }
+        }
+
+        @JavascriptInterface
+        fun onCaptureAndDownload(
+            left: Float,
+            top: Float,
+            width: Float,
+            height: Float,
+            dpr: Float,
+            fallbackUrl: String?,
+            title: String? = null
+        ) {
+            mainHandler.post {
+                val captured = captureBitmapFromWebView(left, top, width, height, dpr)
+                if (captured != null) {
+                    ImageDownloader.saveBitmapToGallery(context, captured, title ?: "ScrollSearch_GooglePhoto")
+                } else if (!fallbackUrl.isNullOrBlank()) {
+                    val clean = fallbackUrl.trim()
+                    if (clean.startsWith("data:image")) {
+                        ImageDownloader.downloadBase64(context, clean, title ?: "ScrollSearch_GooglePhoto")
+                    } else {
+                        ImageDownloader.downloadPhoto(context, clean, "https://www.google.com/", title ?: "ScrollSearch_GooglePhoto")
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onDownloadBase64(base64Data: String, title: String? = null) {
+            mainHandler.post {
+                val clean = base64Data.trim()
+                if (clean.isNotBlank()) {
+                    ImageDownloader.downloadBase64(context, clean, title ?: "ScrollSearch Photo")
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onDownloadImageWithReferrer(imageUrl: String, referrer: String? = null, title: String? = null) {
+            mainHandler.post {
+                val cleanUrl = imageUrl.trim()
+                if (cleanUrl.isNotBlank()) {
+                    ImageDownloader.downloadPhoto(context, cleanUrl, referrer ?: "https://www.google.com/", title ?: "ScrollSearch Photo")
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onDownloadImage(imageUrl: String) {
+            mainHandler.post {
+                val clean = imageUrl.trim()
+                if (clean.isNotBlank()) {
+                    ImageDownloader.downloadPhoto(context, clean, "https://www.google.com/", "ScrollSearch Photo")
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onOpenFullscreen(imageUrl: String, allImagesJson: String? = null) {
+            mainHandler.post {
+                val cleanUrl = imageUrl.trim()
+                val urls = parseUrlsJson(allImagesJson)
+                ScrollSearchStateBus.openFullscreenPhoto(cleanUrl, urls)
+            }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -71,25 +226,50 @@ class FastWebViewManager(private val context: Context) {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
-                // Hardware acceleration for maximum smoothness
                 setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 setBackgroundColor(0xFF12121E.toInt())
+
+                // 1. Enable cookies and inject Google & DuckDuckGo cookies
+                val cookieManager = CookieManager.getInstance()
+                cookieManager.setAcceptCookie(true)
+                cookieManager.setAcceptThirdPartyCookies(this, true)
+                try {
+                    cookieManager.setCookie("https://www.google.com", "CONSENT=YES+cb.20230531-04-p0.pt-BR+FX+999; domain=.google.com; path=/; SameSite=None; Secure")
+                    cookieManager.setCookie("https://www.google.com", "SOCS=CAISHAgBEhJnd3NfMjAyNDA2MTAtMF9SQzIaAmVuIAEaBgoFDICw_hM; domain=.google.com; path=/; SameSite=None; Secure")
+                    // Disable SafeSearch on DuckDuckGo
+                    cookieManager.setCookie("https://duckduckgo.com", "kp=-2; domain=.duckduckgo.com; path=/; SameSite=None; Secure")
+                    cookieManager.flush()
+                } catch (e: Exception) {
+                    Log.w("FastWebViewManager", "Failed to set consent cookies: ${e.message}")
+                }
 
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
+                    databaseEnabled = true
                     cacheMode = WebSettings.LOAD_DEFAULT
                     useWideViewPort = true
                     loadWithOverviewMode = true
-                    builtInZoomControls = false
+                    builtInZoomControls = true
                     displayZoomControls = false
-                    setSupportZoom(false)
+                    setSupportZoom(true)
                     loadsImagesAutomatically = true
-                    mediaPlaybackRequiresUserGesture = true
+                    mediaPlaybackRequiresUserGesture = false
                     mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+
+                    // Clean Chrome User-Agent without WebView markers
+                    userAgentString = "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
                 }
 
-                // Add Javascript interface to extract images directly from the loaded Google page
+                // 2. CRITICAL ANTI-BLOCK: Disable X-Requested-With header to stop Google bot-detection
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                    try {
+                        WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+                    } catch (e: Exception) {
+                        Log.w("FastWebViewManager", "Could not set requested with allow list: ${e.message}")
+                    }
+                }
+
                 addJavascriptInterface(ScrollSearchBridge(), "ScrollSearchBridge")
 
                 webViewClient = object : WebViewClient() {
@@ -100,10 +280,9 @@ class FastWebViewManager(private val context: Context) {
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        // Inject clean styling
-                        view?.evaluateJavascript(GoogleSearchHelper.getCleanViewCssInjectionScript(), null)
-                        // Extract images from the rendered page
-                        view?.evaluateJavascript(GoogleSearchHelper.getImageExtractorScript(), null)
+                        applyCurrentCss(view)
+                        // Inject overlay action buttons (Download & Fullscreen Zoom icons)
+                        view?.evaluateJavascript(GoogleSearchHelper.getImageOverlayButtonsScript(), null)
                         onPageFinishedListener?.invoke()
                     }
 
@@ -119,9 +298,11 @@ class FastWebViewManager(private val context: Context) {
 
                 webChromeClient = object : WebChromeClient() {
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                        if (newProgress > 60) {
-                            view?.evaluateJavascript(GoogleSearchHelper.getCleanViewCssInjectionScript(), null)
-                            view?.evaluateJavascript(GoogleSearchHelper.getImageExtractorScript(), null)
+                        if (newProgress >= 30) {
+                            applyCurrentCss(view)
+                        }
+                        if (newProgress >= 50) {
+                            view?.evaluateJavascript(GoogleSearchHelper.getImageOverlayButtonsScript(), null)
                         }
                     }
                 }
@@ -129,6 +310,26 @@ class FastWebViewManager(private val context: Context) {
             webView = wv
         } catch (e: Exception) {
             Log.e("FastWebViewManager", "Failed to init WebView: ${e.message}")
+        }
+    }
+
+    fun applyCurrentCss(targetView: WebView? = webView) {
+        val activeVersion = ScrollSearchStateBus.activeVersion.value
+        val script = if (activeVersion == com.example.model.OverlayUiVersion.F7) {
+            GoogleSearchHelper.getF7SingleImageCssInjectionScript()
+        } else if (isPureMode) {
+            GoogleSearchHelper.getPurePhotosCssInjectionScript()
+        } else {
+            GoogleSearchHelper.getCleanViewCssInjectionScript()
+        }
+        targetView?.evaluateJavascript(script, null)
+    }
+
+    fun setPureMode(pure: Boolean) {
+        if (isPureMode != pure) {
+            isPureMode = pure
+            applyCurrentCss()
+            webView?.evaluateJavascript(GoogleSearchHelper.getImageOverlayButtonsScript(), null)
         }
     }
 
@@ -140,14 +341,23 @@ class FastWebViewManager(private val context: Context) {
     }
 
     /**
-     * Reuses existing WebView and only navigates when URL changes
-     * (Zero full-overlay re-creations, near real-time response).
+     * Loads the search query using the selected engine.
+     * When isPure is true (versions F), applies qualityParam to search for specific resolution/quality on Google.
      */
-    fun loadSearchQuery(query: String) {
-        val targetUrl = GoogleSearchHelper.buildGoogleImagesUrl(query)
+    fun loadSearchQuery(
+        query: String,
+        isPure: Boolean = false,
+        qualityParam: String = "",
+        engine: com.example.model.SearchEngine = ScrollSearchStateBus.selectedSearchEngine.value
+    ) {
+        currentQuery = query
+        isPureMode = isPure
+        currentQualityParam = qualityParam
+
+        val targetUrl = GoogleSearchHelper.buildSearchUrl(engine, query, if (isPure) qualityParam else "")
         if (targetUrl == currentUrl) {
-            // Re-trigger extractor if already loaded
-            webView?.evaluateJavascript(GoogleSearchHelper.getImageExtractorScript(), null)
+            applyCurrentCss()
+            webView?.evaluateJavascript(GoogleSearchHelper.getImageOverlayButtonsScript(), null)
             return
         }
 
@@ -163,9 +373,6 @@ class FastWebViewManager(private val context: Context) {
         }
     }
 
-    /**
-     * Cleanly recreates WebView if memory gets full or page becomes unresponsive.
-     */
     fun cleanRecreate() {
         try {
             webView?.let { wv ->
@@ -180,7 +387,7 @@ class FastWebViewManager(private val context: Context) {
         } finally {
             webView = null
             initWebView()
-            currentUrl?.let { loadSearchQuery(it) }
+            currentUrl?.let { loadSearchQuery(it, isPureMode, currentQualityParam) }
         }
     }
 
