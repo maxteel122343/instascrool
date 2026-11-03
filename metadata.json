@@ -1,0 +1,6 @@
+{
+  "name": "ScrollSearch Instagram",
+  "description": "Overlay flutuante em tempo real para busca de imagens no Instagram Reels e Feed por nickname.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

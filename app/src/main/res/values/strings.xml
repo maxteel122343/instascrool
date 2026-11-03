@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ScrollSearch</string>
+    <string name="accessibility_service_label">ScrollSearch Instagram Detector</string>
+    <string name="accessibility_service_description">Detecta o criador de conteúdo no Instagram Reels e Feed para busca instantânea de fotos e referências em segundo plano.</string>
+</resources>
