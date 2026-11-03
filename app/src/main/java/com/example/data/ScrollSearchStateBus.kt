@@ -36,7 +36,7 @@ object ScrollSearchStateBus {
     private val _customSearchQuery = MutableStateFlow("")
     val customSearchQuery: StateFlow<String> = _customSearchQuery.asStateFlow()
 
-    private val _heightRatio = MutableStateFlow(0.50f)
+    private val _heightRatio = MutableStateFlow(0.48f)
     val heightRatio: StateFlow<Float> = _heightRatio.asStateFlow()
 
     private val _isSearchFocused = MutableStateFlow(false)
@@ -51,11 +51,20 @@ object ScrollSearchStateBus {
     private val _detectionCount = MutableStateFlow(0)
     val detectionCount: StateFlow<Int> = _detectionCount.asStateFlow()
 
-    private val _lastDetectedTimestamp = MutableStateFlow(System.currentTimeMillis())
-    val lastDetectedTimestamp: StateFlow<Int> = MutableStateFlow(0).asStateFlow()
-
     private val _isInstagramForeground = MutableStateFlow(false)
     val isInstagramForeground: StateFlow<Boolean> = _isInstagramForeground.asStateFlow()
+
+    private val _isPhotoDetailOpen = MutableStateFlow(false)
+    val isPhotoDetailOpen: StateFlow<Boolean> = _isPhotoDetailOpen.asStateFlow()
+
+    private val _isV1WebViewExpanded = MutableStateFlow(false)
+    val isV1WebViewExpanded: StateFlow<Boolean> = _isV1WebViewExpanded.asStateFlow()
+
+    private val _bubbleX = MutableStateFlow(0)
+    val bubbleX: StateFlow<Int> = _bubbleX.asStateFlow()
+
+    private val _bubbleY = MutableStateFlow(400)
+    val bubbleY: StateFlow<Int> = _bubbleY.asStateFlow()
 
     // Listener callbacks for overlay updates
     private var onQueryChangedListener: ((query: String) -> Unit)? = null
@@ -130,11 +139,24 @@ object ScrollSearchStateBus {
     }
 
     fun setHeightRatio(ratio: Float) {
-        _heightRatio.value = ratio.coerceIn(0.25f, 0.88f)
+        _heightRatio.value = ratio.coerceIn(0.20f, 0.85f)
     }
 
     fun setInstagramForeground(inForeground: Boolean) {
         _isInstagramForeground.value = inForeground
+    }
+
+    fun setPhotoDetailOpen(open: Boolean) {
+        _isPhotoDetailOpen.value = open
+    }
+
+    fun setV1WebViewExpanded(expanded: Boolean) {
+        _isV1WebViewExpanded.value = expanded
+    }
+
+    fun updateBubblePosition(x: Int, y: Int) {
+        _bubbleX.value = x
+        _bubbleY.value = y
     }
 
     fun updatePhotos(items: List<PhotoItem>, loading: Boolean = false) {

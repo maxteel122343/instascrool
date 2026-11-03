@@ -2,6 +2,7 @@ package com.example.ui.overlay
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +37,7 @@ import com.example.ui.theme.IgPurple
 fun FloatingBubbleView(
     username: String?,
     onExpand: () -> Unit,
+    onDrag: ((deltaX: Float, deltaY: Float) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -44,6 +47,14 @@ fun FloatingBubbleView(
         modifier = modifier
             .shadow(10.dp, RoundedCornerShape(24.dp))
             .clip(RoundedCornerShape(24.dp))
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        onDrag?.invoke(dragAmount.x, dragAmount.y)
+                    }
+                )
+            }
             .clickable(onClick = onExpand)
             .testTag("floating_bubble_pill")
     ) {
