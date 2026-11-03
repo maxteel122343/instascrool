@@ -103,7 +103,7 @@ fun V7HorizontalPhotosView(
                         color = DarkSurfaceElevated,
                         modifier = Modifier
                             .fillParentMaxHeight()
-                            .width(220.dp)
+                            .fillParentMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .clickable { onPhotoClick(photo) }
                             .testTag("v7_photo_card_$index")
@@ -112,7 +112,7 @@ fun V7HorizontalPhotosView(
                             AsyncImage(
                                 model = photo.url,
                                 contentDescription = photo.title,
-                                contentScale = ContentScale.Crop,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier.fillMaxSize()
                             )
 

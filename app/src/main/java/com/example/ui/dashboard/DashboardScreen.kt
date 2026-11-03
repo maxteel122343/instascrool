@@ -26,19 +26,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.DarkMode
+import com.example.model.SearchEngine
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -95,6 +98,8 @@ fun DashboardScreen(
     val currentUsername by ScrollSearchStateBus.currentUsername.collectAsState()
     val isOverlayActive by ScrollSearchStateBus.isOverlayActive.collectAsState()
     val activeVersion by ScrollSearchStateBus.activeVersion.collectAsState()
+    val currentEngine by ScrollSearchStateBus.selectedSearchEngine.collectAsState()
+    val isSafeSearchDisabled by ScrollSearchStateBus.isSafeSearchDisabled.collectAsState()
     val tags by ScrollSearchStateBus.tags.collectAsState()
     val selectedTag by ScrollSearchStateBus.selectedTag.collectAsState()
     val detectionCount by ScrollSearchStateBus.detectionCount.collectAsState()
@@ -444,6 +449,132 @@ fun DashboardScreen(
                 }
             }
 
+            // Search Engine & Safe Search (Anti-Block & No SafeSearch filter)
+            item {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF00E5FF).copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Language,
+                                    contentDescription = null,
+                                    tint = Color(0xFF00E5FF),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Mecanismo de Busca",
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Escolha o buscador livremente (evita bloqueios/captcha do Google)",
+                                    color = Color.Gray,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(SearchEngine.entries) { engine ->
+                                val isSelected = currentEngine == engine
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) Color(0xFF00E5FF).copy(alpha = 0.2f) else DarkSurfaceElevated,
+                                    border = if (isSelected) {
+                                        androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF00E5FF))
+                                    } else null,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { ScrollSearchStateBus.setSearchEngine(engine) }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = engine.shortName,
+                                            color = if (isSelected) Color(0xFF00E5FF) else Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = engine.domain,
+                                            color = Color.Gray,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // SafeSearch Toggle
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSafeSearchDisabled) Color(0xFF1B5E20).copy(alpha = 0.35f) else DarkSurfaceElevated,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSafeSearchDisabled) Color(0xFF00E676) else Color.Gray.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { ScrollSearchStateBus.toggleSafeSearch() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isSafeSearchDisabled) "Navegação Segura: Desativada (Sem Filtro)" else "Navegação Segura: Ativada",
+                                        color = if (isSafeSearchDisabled) Color(0xFF00E676) else Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Remove filtros de conteúdo no DuckDuckGo, Bing e Google",
+                                        color = Color.Gray,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Switch(
+                                    checked = isSafeSearchDisabled,
+                                    onCheckedChange = { ScrollSearchStateBus.setSafeSearchDisabled(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color(0xFF00E676),
+                                        checkedTrackColor = Color(0xFF1B5E20)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Version Selector (F1-F7 Pure Photos & V1-V7 Tools)
             item {
                 Text(
@@ -730,7 +861,7 @@ fun DashboardScreen(
                                 modifier = Modifier.testTag("launch_instagram_button")
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.OpenInNew,
+                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                                     contentDescription = "Abrir Instagram",
                                     modifier = Modifier.size(14.dp)
                                 )

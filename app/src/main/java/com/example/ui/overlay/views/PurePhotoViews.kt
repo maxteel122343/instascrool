@@ -26,9 +26,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,10 +76,12 @@ fun PureFloatingControlsPill(
     username: String?,
     tags: List<String>,
     selectedTag: String,
+    isSafeSearchDisabled: Boolean = true,
     onTagSelected: (String) -> Unit,
     onAddCustomTag: (String) -> Unit,
     onVersionSelected: (OverlayUiVersion) -> Unit,
     onEngineSelected: (SearchEngine) -> Unit,
+    onToggleSafeSearch: () -> Unit = {},
     onMinimize: () -> Unit,
     onClose: () -> Unit,
     onRefresh: () -> Unit,
@@ -203,13 +205,30 @@ fun PureFloatingControlsPill(
                     }
                 }
 
-                // Toggle Tags button
+                Spacer(modifier = Modifier.width(3.dp))
+
+                // SafeSearch toggle button right in the floating pill
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSafeSearchDisabled) Color(0xFF1B5E20).copy(alpha = 0.7f) else Color.White.copy(alpha = 0.15f))
+                        .clickable { onToggleSafeSearch() }
+                        .padding(horizontal = 5.dp, vertical = 3.dp)
+                        .testTag("f_safesearch_toggle_button")
+                ) {
+                    Text(
+                        text = if (isSafeSearchDisabled) "Safe: OFF" else "Safe: ON",
+                        color = if (isSafeSearchDisabled) Color(0xFF00E676) else Color.LightGray,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 IconButton(
                     onClick = { showTagsRow = !showTagsRow },
                     modifier = Modifier.size(26.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Label,
+                        imageVector = Icons.AutoMirrored.Filled.Label,
                         contentDescription = "Tags",
                         tint = if (showTagsRow) IgPink else Color.LightGray,
                         modifier = Modifier.size(15.dp)

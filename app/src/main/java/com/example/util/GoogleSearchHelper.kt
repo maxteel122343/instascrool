@@ -22,20 +22,36 @@ object GoogleSearchHelper {
             .build()
     }
 
-    fun buildSearchUrl(engine: com.example.model.SearchEngine, query: String, qualityParam: String = ""): String {
+    fun buildSearchUrl(
+        engine: com.example.model.SearchEngine,
+        query: String,
+        qualityParam: String = "",
+        isSafeSearchDisabled: Boolean = com.example.data.ScrollSearchStateBus.isSafeSearchDisabled.value
+    ): String {
         val encoded = URLEncoder.encode(query, "UTF-8")
         return when (engine) {
-            com.example.model.SearchEngine.GOOGLE ->
-                "https://www.google.com/search?q=$encoded&udm=2&hl=pt-BR&gl=br$qualityParam"
-            com.example.model.SearchEngine.BING ->
-                "https://www.bing.com/images/search?q=$encoded&form=HDRSC2"
-            com.example.model.SearchEngine.DUCKDUCKGO ->
-                // kp=-2 explicitly disables SafeSearch on DuckDuckGo
-                "https://duckduckgo.com/?q=$encoded&iax=images&ia=images&kp=-2"
-            com.example.model.SearchEngine.YANDEX ->
-                "https://yandex.com/images/search?text=$encoded"
-            com.example.model.SearchEngine.YAHOO ->
-                "https://images.search.yahoo.com/search/images?p=$encoded"
+            com.example.model.SearchEngine.GOOGLE -> {
+                val safeParam = if (isSafeSearchDisabled) "&safe=off" else "&safe=active"
+                "https://www.google.com/search?q=$encoded&udm=2&hl=pt-BR&gl=br$safeParam$qualityParam"
+            }
+            com.example.model.SearchEngine.BING -> {
+                // adlt=off explicitly disables SafeSearch on Bing
+                val safeParam = if (isSafeSearchDisabled) "&adlt=off" else "&adlt=strict"
+                "https://www.bing.com/images/search?q=$encoded&form=HDRSC2$safeParam"
+            }
+            com.example.model.SearchEngine.DUCKDUCKGO -> {
+                // kp=-2 explicitly disables SafeSearch on DuckDuckGo, kp=1 is strict
+                val safeParam = if (isSafeSearchDisabled) "&kp=-2" else "&kp=1"
+                "https://duckduckgo.com/?q=$encoded&iax=images&ia=images$safeParam"
+            }
+            com.example.model.SearchEngine.YANDEX -> {
+                val safeParam = if (isSafeSearchDisabled) "&family=0" else "&family=1"
+                "https://yandex.com/images/search?text=$encoded$safeParam"
+            }
+            com.example.model.SearchEngine.YAHOO -> {
+                val safeParam = if (isSafeSearchDisabled) "&vm=p" else "&vm=r"
+                "https://images.search.yahoo.com/search/images?p=$encoded$safeParam"
+            }
         }
     }
 
@@ -60,8 +76,7 @@ object GoogleSearchHelper {
                     header, #header, #searchform, .mNsI7b, .F9640c, .OqTqVd, .yg07nd,
                     .k27Ahb, footer, #footer, .NZmxZe, #swml, .fbar, #sfooter,
                     div[role="navigation"], div[role="banner"], form[role="search"],
-                    div[aria-modal="true"], #lb, .VDgVie, form[action*="consent"],
-                    a[data-dropdown-id="safe-search"], .dropdown--safe-search {
+                    div[aria-modal="true"], #lb, .VDgVie, form[action*="consent"] {
                         display: none !important;
                     }
                     body {
@@ -81,10 +96,12 @@ object GoogleSearchHelper {
                     if (consentBtn) { consentBtn.click(); }
                 } catch(e) {}
 
-                // Disable SafeSearch on DuckDuckGo if present
+                // Set SafeSearch disabled cookie on DuckDuckGo and Bing
                 try {
                     if (window.location.hostname.includes('duckduckgo')) {
                         document.cookie = "kp=-2; path=/; domain=.duckduckgo.com";
+                    } else if (window.location.hostname.includes('bing')) {
+                        document.cookie = "SRCHHPGUSR=ADLT=OFF; path=/; domain=.bing.com";
                     }
                 } catch(e) {}
             })();
@@ -108,8 +125,7 @@ object GoogleSearchHelper {
                     div[jsname="GZIdke"], div[jscontroller="Csnxkd"],
                     div.crJ18e, div.L99Ud, div.e6i7be, #taw, .appbar, #botstuff,
                     .W4DClc, .g3P7Id, #rhs, div[data-sug],
-                    div[aria-modal="true"], #lb, .VDgVie, form[action*="consent"], div[role="dialog"],
-                    a[data-dropdown-id="safe-search"], .dropdown--safe-search {
+                    div[aria-modal="true"], #lb, .VDgVie, form[action*="consent"], div[role="dialog"] {
                         display: none !important;
                         height: 0px !important;
                         visibility: hidden !important;
@@ -136,10 +152,12 @@ object GoogleSearchHelper {
                     if (consentBtn) { consentBtn.click(); }
                 } catch(e) {}
 
-                // Disable SafeSearch on DuckDuckGo
+                // Set SafeSearch disabled cookie on DuckDuckGo and Bing
                 try {
                     if (window.location.hostname.includes('duckduckgo')) {
                         document.cookie = "kp=-2; path=/; domain=.duckduckgo.com";
+                    } else if (window.location.hostname.includes('bing')) {
+                        document.cookie = "SRCHHPGUSR=ADLT=OFF; path=/; domain=.bing.com";
                     }
                 } catch(e) {}
             })();
@@ -166,8 +184,7 @@ object GoogleSearchHelper {
                     div[jsname="GZIdke"], div[jscontroller="Csnxkd"],
                     div.crJ18e, div.L99Ud, div.e6i7be, #taw, .appbar, #botstuff,
                     .W4DClc, .g3P7Id, #rhs, div[data-sug],
-                    div[aria-modal="true"], #lb, .VDgVie, form[action*="consent"], div[role="dialog"],
-                    a[data-dropdown-id="safe-search"], .dropdown--safe-search {
+                    div[aria-modal="true"], #lb, .VDgVie, form[action*="consent"], div[role="dialog"] {
                         display: none !important;
                         height: 0px !important;
                         visibility: hidden !important;
@@ -180,15 +197,26 @@ object GoogleSearchHelper {
                         overflow-x: hidden !important;
                         scroll-snap-type: y mandatory !important;
                     }
-                    /* Mode F7: Each photo card fills the viewport width and height - 1 image per view */
-                    div[data-ri], .isv-r, .grid-item, .img_cont, .serp__item, div[jsname="r5xl4"], .tile--img, .iusc {
+                    /* Force parent image containers to a single vertical column */
+                    #islrg, .islrc, .z75nLe, div[jsname="GZIdke"], .results--images, .zmg, .dg_u, .b_focusTextExtra, .serp__results, .layout-images, .b_canvas, #b_content, #b_results {
+                        display: block !important;
+                        column-count: 1 !important;
+                        -webkit-column-count: 1 !important;
+                        grid-template-columns: 100vw !important;
+                        width: 100vw !important;
+                        max-width: 100vw !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                    }
+                    /* Mode F7: Exactly ONE image card filling the display per screen */
+                    div[data-ri], .isv-r, .grid-item, .img_cont, .serp__item, div[jsname="r5xl4"], .tile--img, .iusc, .iuscp {
                         width: 100vw !important;
                         max-width: 100vw !important;
                         min-width: 100vw !important;
-                        height: 84vh !important;
-                        min-height: 84vh !important;
-                        max-height: 84vh !important;
-                        margin: 0px 0px 16px 0px !important;
+                        height: 90vh !important;
+                        min-height: 90vh !important;
+                        max-height: 90vh !important;
+                        margin: 0px 0px 12px 0px !important;
                         padding: 6px !important;
                         box-sizing: border-box !important;
                         display: flex !important;
@@ -197,12 +225,14 @@ object GoogleSearchHelper {
                         scroll-snap-align: center !important;
                         scroll-snap-stop: always !important;
                         position: relative !important;
+                        float: none !important;
+                        clear: both !important;
                     }
-                    div[data-ri] img, .isv-r img, .grid-item img, .img_cont img, .tile--img img, .mimg {
+                    div[data-ri] img, .isv-r img, .grid-item img, .img_cont img, .tile--img img, .mimg, .iusc img {
                         width: 100% !important;
                         height: 100% !important;
-                        max-width: 100% !important;
-                        max-height: 80vh !important;
+                        max-width: 100vw !important;
+                        max-height: 86vh !important;
                         object-fit: contain !important;
                         border-radius: 16px !important;
                     }
@@ -214,10 +244,12 @@ object GoogleSearchHelper {
                     if (consentBtn) { consentBtn.click(); }
                 } catch(e) {}
 
-                // Disable SafeSearch on DuckDuckGo
+                // Set SafeSearch disabled cookie on DuckDuckGo and Bing
                 try {
                     if (window.location.hostname.includes('duckduckgo')) {
                         document.cookie = "kp=-2; path=/; domain=.duckduckgo.com";
+                    } else if (window.location.hostname.includes('bing')) {
+                        document.cookie = "SRCHHPGUSR=ADLT=OFF; path=/; domain=.bing.com";
                     }
                 } catch(e) {}
             })();

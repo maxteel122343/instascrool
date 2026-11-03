@@ -3,9 +3,13 @@ package com.example.ui.overlay
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -184,20 +188,47 @@ fun PhotoDetailDialog(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Determine image model: prioritize valid image URL / Base64; fallback to capturedBitmap
-                val modelToUse: Any = if (imageUrl.isNotBlank()) {
-                    imageUrl
-                } else if (isCurrentCaptured) {
-                    capturedBitmap!!
-                } else {
-                    ""
+                // Decode Base64 data URI if present (fixes first-image loading failure)
+                val decodedBase64Bitmap = remember(imageUrl) {
+                    try {
+                        if (imageUrl.startsWith("data:image") && imageUrl.contains(",")) {
+                            val base64Data = imageUrl.substringAfter(",")
+                            val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        } else null
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+
+                // Prioritize in-memory captured bitmap for clicked image or decoded Base64, then remote URL
+                val modelToUse: Any = when {
+                    isCurrentCaptured && capturedBitmap != null -> capturedBitmap!!
+                    decodedBase64Bitmap != null -> decodedBase64Bitmap
+                    imageUrl.isNotBlank() -> imageUrl
+                    capturedBitmap != null -> capturedBitmap!!
+                    else -> ""
+                }
+
+                val imageRequest = remember(modelToUse, context) {
+                    if (modelToUse is String && modelToUse.startsWith("http")) {
+                        val engineDomain = ScrollSearchStateBus.selectedSearchEngine.value.domain
+                        ImageRequest.Builder(context)
+                            .data(modelToUse)
+                            .setHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
+                            .setHeader("Referer", "https://$engineDomain/")
+                            .crossfade(true)
+                            .build()
+                    } else {
+                        ImageRequest.Builder(context)
+                            .data(modelToUse)
+                            .crossfade(true)
+                            .build()
+                    }
                 }
 
                 SubcomposeAsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(modelToUse)
-                        .crossfade(true)
-                        .build(),
+                    model = imageRequest,
                     contentDescription = "Visualização da foto em alta qualidade",
                     contentScale = ContentScale.Fit,
                     loading = {
@@ -206,32 +237,41 @@ fun PhotoDetailDialog(
                         }
                     },
                     error = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.5f),
-                                modifier = Modifier.size(44.dp)
+                        if (capturedBitmap != null && capturedBitmap!!.width > 20) {
+                            Image(
+                                bitmap = capturedBitmap!!.asImageBitmap(),
+                                contentDescription = "Foto capturada do WebView",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
                             )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "Imagem protegida contra download externo",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Use o botão de captura direta no grid de fotos",
-                                color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 12.sp
-                            )
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(44.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Imagem protegida contra download externo",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Use o botão de captura direta no grid de fotos",
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
                     },
                     modifier = Modifier

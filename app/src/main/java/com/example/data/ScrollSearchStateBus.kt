@@ -20,6 +20,9 @@ object ScrollSearchStateBus {
     private val _selectedSearchEngine = MutableStateFlow(SearchEngine.GOOGLE)
     val selectedSearchEngine: StateFlow<SearchEngine> = _selectedSearchEngine.asStateFlow()
 
+    private val _isSafeSearchDisabled = MutableStateFlow(true)
+    val isSafeSearchDisabled: StateFlow<Boolean> = _isSafeSearchDisabled.asStateFlow()
+
     private val _imageQuality = MutableStateFlow(ImageQuality.HIGH)
     val imageQuality: StateFlow<ImageQuality> = _imageQuality.asStateFlow()
 
@@ -117,6 +120,18 @@ object ScrollSearchStateBus {
     fun setSearchEngine(engine: SearchEngine) {
         if (_selectedSearchEngine.value != engine) {
             _selectedSearchEngine.value = engine
+            notifyEffectiveQueryChanged()
+        }
+    }
+
+    fun toggleSafeSearch() {
+        _isSafeSearchDisabled.value = !_isSafeSearchDisabled.value
+        notifyEffectiveQueryChanged()
+    }
+
+    fun setSafeSearchDisabled(disabled: Boolean) {
+        if (_isSafeSearchDisabled.value != disabled) {
+            _isSafeSearchDisabled.value = disabled
             notifyEffectiveQueryChanged()
         }
     }

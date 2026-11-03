@@ -236,8 +236,10 @@ class FastWebViewManager(private val context: Context) {
                 try {
                     cookieManager.setCookie("https://www.google.com", "CONSENT=YES+cb.20230531-04-p0.pt-BR+FX+999; domain=.google.com; path=/; SameSite=None; Secure")
                     cookieManager.setCookie("https://www.google.com", "SOCS=CAISHAgBEhJnd3NfMjAyNDA2MTAtMF9SQzIaAmVuIAEaBgoFDICw_hM; domain=.google.com; path=/; SameSite=None; Secure")
-                    // Disable SafeSearch on DuckDuckGo
+                    cookieManager.setCookie("https://www.google.com", "safe=off; domain=.google.com; path=/; SameSite=None; Secure")
+                    // Disable SafeSearch on DuckDuckGo and Bing by default
                     cookieManager.setCookie("https://duckduckgo.com", "kp=-2; domain=.duckduckgo.com; path=/; SameSite=None; Secure")
+                    cookieManager.setCookie("https://www.bing.com", "SRCHHPGUSR=ADLT=OFF; domain=.bing.com; path=/; SameSite=None; Secure")
                     cookieManager.flush()
                 } catch (e: Exception) {
                     Log.w("FastWebViewManager", "Failed to set consent cookies: ${e.message}")
@@ -354,7 +356,29 @@ class FastWebViewManager(private val context: Context) {
         isPureMode = isPure
         currentQualityParam = qualityParam
 
-        val targetUrl = GoogleSearchHelper.buildSearchUrl(engine, query, if (isPure) qualityParam else "")
+        val isSafeSearchDisabled = ScrollSearchStateBus.isSafeSearchDisabled.value
+        try {
+            val cookieManager = CookieManager.getInstance()
+            if (isSafeSearchDisabled) {
+                cookieManager.setCookie("https://duckduckgo.com", "kp=-2; domain=.duckduckgo.com; path=/; SameSite=None; Secure")
+                cookieManager.setCookie("https://www.bing.com", "SRCHHPGUSR=ADLT=OFF; domain=.bing.com; path=/; SameSite=None; Secure")
+                cookieManager.setCookie("https://www.google.com", "safe=off; domain=.google.com; path=/; SameSite=None; Secure")
+            } else {
+                cookieManager.setCookie("https://duckduckgo.com", "kp=1; domain=.duckduckgo.com; path=/; SameSite=None; Secure")
+                cookieManager.setCookie("https://www.bing.com", "SRCHHPGUSR=ADLT=STRICT; domain=.bing.com; path=/; SameSite=None; Secure")
+                cookieManager.setCookie("https://www.google.com", "safe=active; domain=.google.com; path=/; SameSite=None; Secure")
+            }
+            cookieManager.flush()
+        } catch (e: Exception) {
+            Log.w("FastWebViewManager", "Failed to update cookies: ${e.message}")
+        }
+
+        val targetUrl = GoogleSearchHelper.buildSearchUrl(
+            engine = engine,
+            query = query,
+            qualityParam = if (isPure) qualityParam else "",
+            isSafeSearchDisabled = isSafeSearchDisabled
+        )
         if (targetUrl == currentUrl) {
             applyCurrentCss()
             webView?.evaluateJavascript(GoogleSearchHelper.getImageOverlayButtonsScript(), null)

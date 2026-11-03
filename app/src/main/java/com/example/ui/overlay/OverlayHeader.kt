@@ -56,8 +56,10 @@ fun OverlayHeader(
     username: String?,
     currentVersion: OverlayUiVersion,
     currentEngine: SearchEngine,
+    isSafeSearchDisabled: Boolean = true,
     onVersionSelected: (OverlayUiVersion) -> Unit,
     onEngineSelected: (SearchEngine) -> Unit,
+    onToggleSafeSearch: () -> Unit = {},
     onMinimize: () -> Unit,
     onClose: () -> Unit,
     onRefresh: () -> Unit,
@@ -218,6 +220,100 @@ fun OverlayHeader(
                             )
                         }
                     }
+                }
+
+                Spacer(modifier = Modifier.width(5.dp))
+
+                // Search Engine Selector Pill (Google, Bing, Duck, Yandex, Yahoo)
+                Box {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = DarkSurfaceElevated,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { showEngineMenu = true }
+                            .testTag("engine_picker_button")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Language,
+                                contentDescription = "Buscador",
+                                tint = Color(0xFF00E5FF),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = currentEngine.shortName,
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Selecionar buscador",
+                                tint = Color.LightGray,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showEngineMenu,
+                        onDismissRequest = { showEngineMenu = false },
+                        modifier = Modifier.background(DarkSurfaceElevated)
+                    ) {
+                        SearchEngine.entries.forEach { engine ->
+                            val isEngineSelected = engine == currentEngine
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(
+                                            text = engine.displayName,
+                                            color = if (isEngineSelected) Color(0xFF00E5FF) else Color.White,
+                                            fontWeight = if (isEngineSelected) FontWeight.Bold else FontWeight.Normal,
+                                            fontSize = 12.sp
+                                        )
+                                        Text(
+                                            text = engine.domain,
+                                            color = Color.Gray,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    showEngineMenu = false
+                                    onEngineSelected(engine)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // SafeSearch Toggle Pill (Navegação Segura: Desativada / Ativada)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isSafeSearchDisabled) Color(0xFF1B5E20).copy(alpha = 0.6f) else Color.White.copy(alpha = 0.10f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isSafeSearchDisabled) Color(0xFF00E676) else Color.Gray.copy(alpha = 0.4f)
+                    ),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onToggleSafeSearch() }
+                        .testTag("safesearch_toggle_button")
+                ) {
+                    Text(
+                        text = if (isSafeSearchDisabled) "Safe: OFF" else "Safe: ON",
+                        color = if (isSafeSearchDisabled) Color(0xFF00E676) else Color.LightGray,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
                 }
 
                 // Refresh Button

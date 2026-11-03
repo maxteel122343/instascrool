@@ -43,6 +43,8 @@ fun OverlayRootComposable(
 ) {
     val username by ScrollSearchStateBus.currentUsername.collectAsState()
     val activeVersion by ScrollSearchStateBus.activeVersion.collectAsState()
+    val currentEngine by ScrollSearchStateBus.selectedSearchEngine.collectAsState()
+    val isSafeSearchDisabled by ScrollSearchStateBus.isSafeSearchDisabled.collectAsState()
     val isBubbleCollapsed by ScrollSearchStateBus.isBubbleCollapsed.collectAsState()
     val tags by ScrollSearchStateBus.tags.collectAsState()
     val selectedTag by ScrollSearchStateBus.selectedTag.collectAsState()
@@ -138,12 +140,16 @@ fun OverlayRootComposable(
                     // Floating minimalist control pill (version selector, tags, close, minimize)
                     PureFloatingControlsPill(
                         currentVersion = activeVersion,
+                        currentEngine = currentEngine,
                         username = username,
                         tags = tags,
                         selectedTag = selectedTag,
+                        isSafeSearchDisabled = isSafeSearchDisabled,
                         onTagSelected = { ScrollSearchStateBus.selectTag(it) },
                         onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) },
                         onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
+                        onEngineSelected = { ScrollSearchStateBus.setSearchEngine(it) },
+                        onToggleSafeSearch = { ScrollSearchStateBus.toggleSafeSearch() },
                         onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
                         onClose = onCloseOverlay,
                         onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() },
@@ -204,7 +210,11 @@ fun OverlayRootComposable(
                                 OverlayHeader(
                                     username = username,
                                     currentVersion = activeVersion,
+                                    currentEngine = currentEngine,
+                                    isSafeSearchDisabled = isSafeSearchDisabled,
                                     onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
+                                    onEngineSelected = { ScrollSearchStateBus.setSearchEngine(it) },
+                                    onToggleSafeSearch = { ScrollSearchStateBus.toggleSafeSearch() },
                                     onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
                                     onClose = onCloseOverlay,
                                     onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() }
@@ -214,7 +224,11 @@ fun OverlayRootComposable(
                             OverlayHeader(
                                 username = username,
                                 currentVersion = activeVersion,
+                                currentEngine = currentEngine,
+                                isSafeSearchDisabled = isSafeSearchDisabled,
                                 onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
+                                onEngineSelected = { ScrollSearchStateBus.setSearchEngine(it) },
+                                onToggleSafeSearch = { ScrollSearchStateBus.toggleSafeSearch() },
                                 onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
                                 onClose = onCloseOverlay,
                                 onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() }
