@@ -1,8 +1,8 @@
 package com.example.ui.overlay.views
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +27,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,10 +47,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,20 +57,24 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.model.OverlayUiVersion
 import com.example.model.PhotoItem
-import com.example.ui.theme.DarkSurface
+import com.example.ui.overlay.TagsRow
 import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.IgOrange
 import com.example.ui.theme.IgPink
-import com.example.ui.theme.IgPurple
+import com.example.util.ImageDownloader
 
 /**
- * Minimalist floating pill with version switch, refresh, minimize, and close.
- * Allows quick switching between V and F versions without polluting the clean photo view.
+ * Minimalist floating pill with version switch, tags toggle, refresh, minimize, and close.
+ * Allows quick switching between V and F versions and managing tags without polluting the clean photo view.
  */
 @Composable
 fun PureFloatingControlsPill(
     currentVersion: OverlayUiVersion,
     username: String?,
+    tags: List<String>,
+    selectedTag: String,
+    onTagSelected: (String) -> Unit,
+    onAddCustomTag: (String) -> Unit,
     onVersionSelected: (OverlayUiVersion) -> Unit,
     onMinimize: () -> Unit,
     onClose: () -> Unit,
@@ -78,109 +82,145 @@ fun PureFloatingControlsPill(
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showTagsRow by remember { mutableStateOf(false) }
 
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = Color.Black.copy(alpha = 0.75f),
-        shadowElevation = 8.dp,
-        modifier = modifier
-            .padding(8.dp)
-            .shadow(6.dp, RoundedCornerShape(20.dp))
-            .clip(RoundedCornerShape(20.dp))
+    Column(
+        modifier = modifier.padding(6.dp),
+        horizontalAlignment = Alignment.End
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color.Black.copy(alpha = 0.82f),
+            shadowElevation = 8.dp,
+            modifier = Modifier
+                .shadow(6.dp, RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(20.dp))
         ) {
-            // Version pill
-            Box {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { showMenu = true }
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = currentVersion.code,
-                        color = IgPink,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = if (!username.isNullOrBlank()) "@$username" else "",
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false },
-                    modifier = Modifier.background(DarkSurfaceElevated)
-                ) {
-                    OverlayUiVersion.entries.forEach { version ->
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = version.code,
-                                        color = if (version.isCleanPhotoOnly) IgOrange else IgPink,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = version.title,
-                                        color = if (version == currentVersion) Color.White else Color.LightGray,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            },
-                            onClick = {
-                                showMenu = false
-                                onVersionSelected(version)
-                            }
+            Row(
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Version pill
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showMenu = true }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = currentVersion.code,
+                            color = IgOrange,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = if (!username.isNullOrBlank()) "@$username" else "",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
+
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        modifier = Modifier.background(DarkSurfaceElevated)
+                    ) {
+                        OverlayUiVersion.entries.forEach { version ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = version.code,
+                                            color = if (version.isCleanPhotoOnly) IgOrange else IgPink,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = version.title,
+                                            color = if (version == currentVersion) Color.White else Color.LightGray,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onVersionSelected(version)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Toggle Tags button
+                IconButton(
+                    onClick = { showTagsRow = !showTagsRow },
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Label,
+                        contentDescription = "Tags",
+                        tint = if (showTagsRow) IgPink else Color.LightGray,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Atualizar",
+                        tint = Color.LightGray,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onMinimize,
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Remove,
+                        contentDescription = "Minimizar",
+                        tint = Color.LightGray,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Fechar",
+                        tint = Color(0xFFFF5252),
+                        modifier = Modifier.size(15.dp)
+                    )
                 }
             }
+        }
 
-            IconButton(
-                onClick = onRefresh,
-                modifier = Modifier.size(26.dp)
+        // Animated tags row for all F versions when toggled
+        AnimatedVisibility(visible = showTagsRow) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color.Black.copy(alpha = 0.90f),
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
             ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Atualizar",
-                    tint = Color.LightGray,
-                    modifier = Modifier.size(14.dp)
-                )
-            }
-
-            IconButton(
-                onClick = onMinimize,
-                modifier = Modifier.size(26.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Remove,
-                    contentDescription = "Minimizar",
-                    tint = Color.LightGray,
-                    modifier = Modifier.size(14.dp)
-                )
-            }
-
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier.size(26.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Fechar",
-                    tint = Color(0xFFFF5252),
-                    modifier = Modifier.size(14.dp)
+                TagsRow(
+                    tags = tags,
+                    selectedTag = selectedTag,
+                    onTagSelected = onTagSelected,
+                    onAddCustomTag = onAddCustomTag
                 )
             }
         }
@@ -188,8 +228,7 @@ fun PureFloatingControlsPill(
 }
 
 /**
- * F1: Baseado no V1 (Barra inferior), mas só fotos grandes na horizontal.
- * Sem barra de busca, sem cabeçalhos, sem Google.
+ * F1: Baseado no V1 (Barra inferior), mas só fotos grandes na horizontal com botão de download.
  */
 @Composable
 fun F1PurePhotoView(
@@ -198,6 +237,8 @@ fun F1PurePhotoView(
     onPhotoClick: (PhotoItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -228,6 +269,26 @@ fun F1PurePhotoView(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        // Download button on photo
+                        IconButton(
+                            onClick = {
+                                ImageDownloader.downloadPhoto(context, photo.url, photo.title)
+                            },
+                            modifier = Modifier
+                                .size(30.dp)
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
+                                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                                .testTag("download_btn_f1_${photo.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Baixar",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -236,8 +297,7 @@ fun F1PurePhotoView(
 }
 
 /**
- * F2: Baseado no V2 (Sidebar Lateral), mas apenas fotos verticais puras de alta qualidade.
- * Sem headers, sem bordas, sem página do Google.
+ * F2: Baseado no V2 (Sidebar Lateral), fotos verticais puras com botão de download.
  */
 @Composable
 fun F2PurePhotoView(
@@ -246,6 +306,8 @@ fun F2PurePhotoView(
     onPhotoClick: (PhotoItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -276,6 +338,26 @@ fun F2PurePhotoView(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        // Download button on photo
+                        IconButton(
+                            onClick = {
+                                ImageDownloader.downloadPhoto(context, photo.url, photo.title)
+                            },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
+                                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                                .testTag("download_btn_f2_${photo.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Baixar",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -284,8 +366,7 @@ fun F2PurePhotoView(
 }
 
 /**
- * F5: Baseado no V5 (Bottom Sheet), mas apenas fotos grandes de alta qualidade
- * com deslizamento lateral / galeria, sem página do Google.
+ * F5: Baseado no V5 (Bottom Sheet), fotos grandes com deslizamento lateral e download.
  */
 @Composable
 fun F5PurePhotoView(
@@ -294,6 +375,8 @@ fun F5PurePhotoView(
     onPhotoClick: (PhotoItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -324,6 +407,26 @@ fun F5PurePhotoView(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        // Download button on photo
+                        IconButton(
+                            onClick = {
+                                ImageDownloader.downloadPhoto(context, photo.url, photo.title)
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .align(Alignment.BottomEnd)
+                                .padding(6.dp)
+                                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                                .testTag("download_btn_f5_${photo.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Baixar",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -332,8 +435,7 @@ fun F5PurePhotoView(
 }
 
 /**
- * F6: Baseado no V6 (Fotos Vertical), totalmente limpa, sem header, sem barra de busca.
- * Fotos grandes na vertical em tela cheia da área disponível.
+ * F6: Baseado no V6 (Fotos Vertical), grade vertical de fotos com download.
  */
 @Composable
 fun F6PurePhotoView(
@@ -342,6 +444,8 @@ fun F6PurePhotoView(
     onPhotoClick: (PhotoItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -374,6 +478,26 @@ fun F6PurePhotoView(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        // Download button on photo
+                        IconButton(
+                            onClick = {
+                                ImageDownloader.downloadPhoto(context, photo.url, photo.title)
+                            },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
+                                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                                .testTag("download_btn_f6_${photo.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Baixar",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -382,8 +506,7 @@ fun F6PurePhotoView(
 }
 
 /**
- * F7: Baseado no V7 (Swipe Horizontal), tela cheia de fotos puras grandes.
- * Deslize lateral de alta resolução sem elementos extras.
+ * F7: Baseado no V7 (Swipe Horizontal), tela cheia de fotos com contador e download.
  */
 @Composable
 fun F7PurePhotoView(
@@ -392,6 +515,8 @@ fun F7PurePhotoView(
     onPhotoClick: (PhotoItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -423,11 +548,11 @@ fun F7PurePhotoView(
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        // Discreto contador no canto superior
+                        // Discreto contador no canto superior esquerdo
                         Box(
                             modifier = Modifier
                                 .padding(12.dp)
-                                .align(Alignment.TopEnd)
+                                .align(Alignment.TopStart)
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.6f))
                                 .padding(horizontal = 8.dp, vertical = 3.dp)
@@ -437,6 +562,26 @@ fun F7PurePhotoView(
                                 color = Color.White,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Download button on photo
+                        IconButton(
+                            onClick = {
+                                ImageDownloader.downloadPhoto(context, photo.url, photo.title)
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .align(Alignment.BottomEnd)
+                                .padding(6.dp)
+                                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                                .testTag("download_btn_f7_${photo.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Baixar",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }

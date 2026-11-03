@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -155,7 +156,22 @@ fun V7HorizontalPhotosView(
                                     modifier = Modifier.weight(1f)
                                 )
 
-                                Spacer(modifier = Modifier.width(4.dp))
+                                val context = androidx.compose.ui.platform.LocalContext.current
+                                androidx.compose.material3.IconButton(
+                                    onClick = {
+                                        com.example.util.ImageDownloader.downloadPhoto(context, photo.url, photo.title)
+                                    },
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .testTag("download_btn_v7_${photo.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = androidx.compose.material.icons.Icons.Default.Download,
+                                        contentDescription = "Baixar imagem",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
 
                                 Icon(
                                     imageVector = Icons.Default.ZoomIn,

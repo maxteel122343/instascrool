@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -181,6 +183,27 @@ private fun V1PhotoCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Download button
+            val context = androidx.compose.ui.platform.LocalContext.current
+            androidx.compose.material3.IconButton(
+                onClick = {
+                    com.example.util.ImageDownloader.downloadPhoto(context, photo.url, photo.title)
+                },
+                modifier = Modifier
+                    .size(24.dp)
+                    .align(Alignment.TopEnd)
+                    .padding(2.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                    .testTag("download_btn_v1_${photo.id}")
+            ) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.Download,
+                    contentDescription = "Baixar",
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
 
             // Gradient scrim at bottom
             Box(

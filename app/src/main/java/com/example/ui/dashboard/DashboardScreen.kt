@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -81,8 +83,10 @@ import com.example.ui.theme.IgYellow
 fun DashboardScreen(
     isOverlayPermissionGranted: Boolean,
     isAccessibilityServiceEnabled: Boolean,
+    isStoragePermissionGranted: Boolean,
     onRequestOverlayPermission: () -> Unit,
     onRequestAccessibilityPermission: () -> Unit,
+    onRequestStoragePermission: () -> Unit,
     onLaunchInstagram: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -150,31 +154,64 @@ fun DashboardScreen(
                                 )
                             }
 
-                            // Live Instagram Activity Chip
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isInstagramForeground) Color(0xFF00C853).copy(alpha = 0.2f) else DarkSurfaceElevated,
-                                border = if (isInstagramForeground) {
-                                    androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00C853))
-                                } else null
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Theme toggle button (Dark / Light)
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = DarkSurfaceElevated,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { ScrollSearchStateBus.toggleTheme() }
+                                        .testTag("theme_toggle_button")
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isInstagramForeground) Color(0xFF00C853) else Color.Gray)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (isInstagramForeground) "Instagram Ativo" else "Standby",
-                                        color = if (isInstagramForeground) Color(0xFF00E676) else Color.LightGray,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = if (ScrollSearchStateBus.isDarkTheme.collectAsState().value) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                            contentDescription = "Alternar Tema",
+                                            tint = IgYellow,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (ScrollSearchStateBus.isDarkTheme.collectAsState().value) "Claro" else "Escuro",
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                // Live Instagram Activity Chip
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isInstagramForeground) Color(0xFF00C853).copy(alpha = 0.2f) else DarkSurfaceElevated,
+                                    border = if (isInstagramForeground) {
+                                        androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00C853))
+                                    } else null
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isInstagramForeground) Color(0xFF00C853) else Color.Gray)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (isInstagramForeground) "Instagram Ativo" else "Standby",
+                                            color = if (isInstagramForeground) Color(0xFF00E676) else Color.LightGray,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -273,6 +310,12 @@ fun DashboardScreen(
                                 label = "Acessibilidade",
                                 granted = isAccessibilityServiceEnabled,
                                 onClick = onRequestAccessibilityPermission,
+                                modifier = Modifier.weight(1f)
+                            )
+                            PermissionStatusPill(
+                                label = "Armazenamento",
+                                granted = isStoragePermissionGranted,
+                                onClick = onRequestStoragePermission,
                                 modifier = Modifier.weight(1f)
                             )
                         }

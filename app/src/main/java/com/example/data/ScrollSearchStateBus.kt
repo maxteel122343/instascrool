@@ -8,7 +8,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 object ScrollSearchStateBus {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -22,7 +21,7 @@ object ScrollSearchStateBus {
     private val _isBubbleCollapsed = MutableStateFlow(false)
     val isBubbleCollapsed: StateFlow<Boolean> = _isBubbleCollapsed.asStateFlow()
 
-    private val _activeVersion = MutableStateFlow(OverlayUiVersion.V6)
+    private val _activeVersion = MutableStateFlow(OverlayUiVersion.F7)
     val activeVersion: StateFlow<OverlayUiVersion> = _activeVersion.asStateFlow()
 
     private val _tags = MutableStateFlow(
@@ -33,10 +32,11 @@ object ScrollSearchStateBus {
     private val _selectedTag = MutableStateFlow("tudo")
     val selectedTag: StateFlow<String> = _selectedTag.asStateFlow()
 
-    private val _customSearchQuery = MutableStateFlow("")
-    val customSearchQuery: StateFlow<String> = _customSearchQuery.asStateFlow()
+    // Holds the exact text shown in the search bar: e.g. "@cristiano" or "@cristiano model"
+    private val _searchBarText = MutableStateFlow("@cristiano")
+    val searchBarText: StateFlow<String> = _searchBarText.asStateFlow()
 
-    private val _heightRatio = MutableStateFlow(0.48f)
+    private val _heightRatio = MutableStateFlow(0.50f)
     val heightRatio: StateFlow<Float> = _heightRatio.asStateFlow()
 
     private val _isSearchFocused = MutableStateFlow(false)
@@ -78,13 +78,18 @@ object ScrollSearchStateBus {
         onRequestFocusToggle = listener
     }
 
+    /**
+     * Called when InstagramAccessibilityService detects a new creator.
+     * Updates current creator and sets search bar to "@<creator> <tag>"
+     */
     fun updateDetectedUsername(username: String) {
         val clean = username.trim().removePrefix("@")
         if (clean.isBlank()) return
         if (_currentUsername.value != clean) {
             _currentUsername.value = clean
             _detectionCount.value += 1
-            _customSearchQuery.value = "" // Reset manual query when new creator is detected
+            val tagSuffix = if (_selectedTag.value.isNotEmpty() && _selectedTag.value != "tudo") " ${_selectedTag.value}" else ""
+            _searchBarText.value = "@$clean$tagSuffix"
             notifyEffectiveQueryChanged()
         }
     }
@@ -104,17 +109,33 @@ object ScrollSearchStateBus {
         }
     }
 
+    /**
+     * When user taps a tag, append or update it on the current search bar text
+     */
     fun selectTag(tag: String) {
         _selectedTag.value = tag
+        val current = _searchBarText.value.trim()
+        val userMatch = Regex("^@[a-zA-Z0-9._]+").find(current)
+        if (userMatch != null) {
+            val userPrefix = userMatch.value
+            val tagSuffix = if (tag != "tudo") " $tag" else ""
+            _searchBarText.value = "$userPrefix$tagSuffix"
+        } else if (current.isNotEmpty()) {
+            val tagSuffix = if (tag != "tudo") " $tag" else ""
+            _searchBarText.value = "$current$tagSuffix"
+        } else {
+            val user = _currentUsername.value ?: "instagram"
+            val tagSuffix = if (tag != "tudo") " $tag" else ""
+            _searchBarText.value = "@$user$tagSuffix"
+        }
         notifyEffectiveQueryChanged()
     }
 
     fun addCustomTag(newTag: String) {
-        val clean = newTag.trim().lowercase()
+        val clean = newTag.trim().lowercase().removePrefix("#")
         if (clean.isNotEmpty() && !_tags.value.contains(clean)) {
             _tags.value = _tags.value + clean
-            _selectedTag.value = clean
-            notifyEffectiveQueryChanged()
+            selectTag(clean)
         }
     }
 
@@ -122,14 +143,18 @@ object ScrollSearchStateBus {
         if (tag != "tudo" && _tags.value.contains(tag)) {
             _tags.value = _tags.value - tag
             if (_selectedTag.value == tag) {
-                _selectedTag.value = "tudo"
-                notifyEffectiveQueryChanged()
+                selectTag("tudo")
             }
         }
     }
 
-    fun setCustomSearchQuery(query: String) {
-        _customSearchQuery.value = query
+    /**
+     * User explicitly typed in the search bar.
+     * If user keeps @name, it includes it.
+     * If user removes @name, only what was typed is used.
+     */
+    fun setSearchBarText(text: String) {
+        _searchBarText.value = text
         notifyEffectiveQueryChanged()
     }
 
@@ -168,17 +193,20 @@ object ScrollSearchStateBus {
         _isLoadingPhotos.value = loading
     }
 
+    /**
+     * Parses the current search bar text into effective Google search query.
+     * If it contains @name, converts '@name' to 'name' and keeps the rest of the query.
+     * If user erased '@name', only the typed text is queried.
+     */
     fun getEffectiveSearchQuery(): String {
-        val manual = _customSearchQuery.value.trim()
-        if (manual.isNotEmpty()) return manual
-
-        val user = _currentUsername.value ?: "instagram"
-        val tag = _selectedTag.value
-        return if (tag.isEmpty() || tag == "tudo") {
-            "$user instagram"
-        } else {
-            "$user $tag"
+        val raw = _searchBarText.value.trim()
+        if (raw.isEmpty()) {
+            val user = _currentUsername.value ?: "instagram"
+            return "$user instagram"
         }
+        // Remove '@' symbol so search engine searches creator's name + words
+        val clean = raw.replace(Regex("@([a-zA-Z0-9._]+)"), "$1").trim()
+        return clean.ifEmpty { "instagram" }
     }
 
     fun notifyEffectiveQueryChanged() {

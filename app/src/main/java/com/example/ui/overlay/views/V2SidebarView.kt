@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -110,6 +113,27 @@ fun V2SidebarView(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
+
+                            // Download button
+                            val context = androidx.compose.ui.platform.LocalContext.current
+                            androidx.compose.material3.IconButton(
+                                onClick = {
+                                    com.example.util.ImageDownloader.downloadPhoto(context, photo.url, photo.title)
+                                },
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .align(Alignment.TopEnd)
+                                    .padding(2.dp)
+                                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                    .testTag("download_btn_v2_${photo.id}")
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    imageVector = androidx.compose.material.icons.Icons.Default.Download,
+                                    contentDescription = "Baixar",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
 
                             Box(
                                 modifier = Modifier

@@ -55,14 +55,13 @@ fun OverlayRootComposable(
     val isBubbleCollapsed by ScrollSearchStateBus.isBubbleCollapsed.collectAsState()
     val tags by ScrollSearchStateBus.tags.collectAsState()
     val selectedTag by ScrollSearchStateBus.selectedTag.collectAsState()
-    val customQuery by ScrollSearchStateBus.customSearchQuery.collectAsState()
+    val searchBarText by ScrollSearchStateBus.searchBarText.collectAsState()
     val heightRatio by ScrollSearchStateBus.heightRatio.collectAsState()
     val photos by ScrollSearchStateBus.photos.collectAsState()
     val isLoadingPhotos by ScrollSearchStateBus.isLoadingPhotos.collectAsState()
     val isV1Expanded by ScrollSearchStateBus.isV1WebViewExpanded.collectAsState()
     val isPhotoDetailOpen by ScrollSearchStateBus.isPhotoDetailOpen.collectAsState()
 
-    var showAddTagDialog by remember { mutableStateOf(false) }
     var selectedPhotoDetail by remember { mutableStateOf<PhotoItem?>(null) }
 
     ScrollSearchTheme {
@@ -77,7 +76,7 @@ fun OverlayRootComposable(
                 modifier = modifier
             )
         } else if (isPhotoDetailOpen && selectedPhotoDetail != null) {
-            // Fullscreen photo inspector dialog
+            // Fullscreen photo inspector dialog with download button
             PhotoDetailDialog(
                 photo = selectedPhotoDetail!!,
                 onDismiss = {
@@ -107,6 +106,10 @@ fun OverlayRootComposable(
                         PureFloatingControlsPill(
                             currentVersion = activeVersion,
                             username = username,
+                            tags = tags,
+                            selectedTag = selectedTag,
+                            onTagSelected = { ScrollSearchStateBus.selectTag(it) },
+                            onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) },
                             onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
                             onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
                             onClose = onCloseOverlay,
@@ -132,6 +135,10 @@ fun OverlayRootComposable(
                         PureFloatingControlsPill(
                             currentVersion = activeVersion,
                             username = username,
+                            tags = tags,
+                            selectedTag = selectedTag,
+                            onTagSelected = { ScrollSearchStateBus.selectTag(it) },
+                            onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) },
                             onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
                             onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
                             onClose = onCloseOverlay,
@@ -219,6 +226,10 @@ fun OverlayRootComposable(
                         PureFloatingControlsPill(
                             currentVersion = activeVersion,
                             username = username,
+                            tags = tags,
+                            selectedTag = selectedTag,
+                            onTagSelected = { ScrollSearchStateBus.selectTag(it) },
+                            onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) },
                             onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
                             onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
                             onClose = onCloseOverlay,
@@ -257,14 +268,14 @@ fun OverlayRootComposable(
                                 tags = tags,
                                 selectedTag = selectedTag,
                                 onTagSelected = { ScrollSearchStateBus.selectTag(it) },
-                                onAddNewTagClick = { showAddTagDialog = true }
+                                onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) }
                             )
 
                             SearchBarComponent(
-                                query = customQuery,
-                                onQueryChange = { ScrollSearchStateBus.setCustomSearchQuery(it) },
+                                query = searchBarText,
+                                onQueryChange = { ScrollSearchStateBus.setSearchBarText(it) },
                                 placeholder = "@${username ?: "criador"}...",
-                                onSearchSubmitted = { ScrollSearchStateBus.setCustomSearchQuery(it) },
+                                onSearchSubmitted = { ScrollSearchStateBus.setSearchBarText(it) },
                                 onFocusChanged = { ScrollSearchStateBus.setSearchFocused(it) }
                             )
 
@@ -305,14 +316,14 @@ fun OverlayRootComposable(
                                 tags = tags,
                                 selectedTag = selectedTag,
                                 onTagSelected = { ScrollSearchStateBus.selectTag(it) },
-                                onAddNewTagClick = { showAddTagDialog = true }
+                                onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) }
                             )
 
                             SearchBarComponent(
-                                query = customQuery,
-                                onQueryChange = { ScrollSearchStateBus.setCustomSearchQuery(it) },
+                                query = searchBarText,
+                                onQueryChange = { ScrollSearchStateBus.setSearchBarText(it) },
                                 placeholder = "Buscar com @${username ?: "criador"}...",
-                                onSearchSubmitted = { ScrollSearchStateBus.setCustomSearchQuery(it) },
+                                onSearchSubmitted = { ScrollSearchStateBus.setSearchBarText(it) },
                                 onFocusChanged = { ScrollSearchStateBus.setSearchFocused(it) }
                             )
 
@@ -373,14 +384,14 @@ fun OverlayRootComposable(
                                 tags = tags,
                                 selectedTag = selectedTag,
                                 onTagSelected = { ScrollSearchStateBus.selectTag(it) },
-                                onAddNewTagClick = { showAddTagDialog = true }
+                                onAddCustomTag = { ScrollSearchStateBus.addCustomTag(it) }
                             )
 
                             SearchBarComponent(
-                                query = customQuery,
-                                onQueryChange = { ScrollSearchStateBus.setCustomSearchQuery(it) },
+                                query = searchBarText,
+                                onQueryChange = { ScrollSearchStateBus.setSearchBarText(it) },
                                 placeholder = "Pesquisar imagens com @${username ?: "criador"}...",
-                                onSearchSubmitted = { ScrollSearchStateBus.setCustomSearchQuery(it) },
+                                onSearchSubmitted = { ScrollSearchStateBus.setSearchBarText(it) },
                                 onFocusChanged = { ScrollSearchStateBus.setSearchFocused(it) }
                             )
 
@@ -425,14 +436,6 @@ fun OverlayRootComposable(
                     }
                 }
             }
-        }
-
-        // Add Tag Dialog
-        if (showAddTagDialog) {
-            AddTagDialog(
-                onDismiss = { showAddTagDialog = false },
-                onAddTag = { ScrollSearchStateBus.addCustomTag(it) }
-            )
         }
     }
 }

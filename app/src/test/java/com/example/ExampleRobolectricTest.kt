@@ -26,10 +26,20 @@ class ExampleRobolectricTest {
     fun `test state bus username updates and query template`() {
         ScrollSearchStateBus.updateDetectedUsername("zendaya")
         assertEquals("zendaya", ScrollSearchStateBus.currentUsername.value)
+        assertEquals("@zendaya", ScrollSearchStateBus.searchBarText.value)
 
         ScrollSearchStateBus.selectTag("model")
+        assertEquals("@zendaya model", ScrollSearchStateBus.searchBarText.value)
         val effectiveQuery = ScrollSearchStateBus.getEffectiveSearchQuery()
         assertEquals("zendaya model", effectiveQuery)
+
+        // When user types custom text keeping @
+        ScrollSearchStateBus.setSearchBarText("@zendaya photoshoot red carpet")
+        assertEquals("zendaya photoshoot red carpet", ScrollSearchStateBus.getEffectiveSearchQuery())
+
+        // When user removes @ from search bar
+        ScrollSearchStateBus.setSearchBarText("carro esportivo")
+        assertEquals("carro esportivo", ScrollSearchStateBus.getEffectiveSearchQuery())
 
         ScrollSearchStateBus.setVersion(OverlayUiVersion.F7)
         assertEquals(OverlayUiVersion.F7, ScrollSearchStateBus.activeVersion.value)

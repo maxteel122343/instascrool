@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
@@ -15,21 +16,17 @@ object GoogleSearchHelper {
 
     private val client by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(6, TimeUnit.SECONDS)
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
     }
 
     fun buildGoogleImagesUrl(query: String): String {
         val encoded = URLEncoder.encode(query, "UTF-8")
-        return "https://www.google.com/search?tbm=isch&q=$encoded&hl=pt-BR&gl=br&tbs=isz:lt,islt:qsvga"
+        return "https://www.google.com/search?tbm=isch&q=$encoded&hl=pt-BR&gl=br"
     }
 
-    /**
-     * Injects lightweight CSS/JS to strip Google top headers, search bars, google logos,
-     * consent popups, and footers for ultra-fast, clean display in WebViews.
-     */
     fun getCleanViewCssInjectionScript(): String {
         return """
             (function() {
@@ -59,10 +56,6 @@ object GoogleSearchHelper {
         """.trimIndent()
     }
 
-    /**
-     * Script injected into WebView to extract all high-quality image URLs rendered
-     * by Google Images and bridge them to native Compose views.
-     */
     fun getImageExtractorScript(): String {
         return """
             (function() {
@@ -74,9 +67,8 @@ object GoogleSearchHelper {
                         var el = imgs[i];
                         var src = el.src || el.getAttribute('data-src') || el.getAttribute('src');
                         if (src && !seen[src]) {
-                            // Filter out google logos, icons, navigation arrows
                             if (!src.includes('googlelogo') && !src.includes('cleardot') && !src.includes('arrow_') && !src.includes('quantum')) {
-                                if (el.naturalWidth > 40 || el.width > 40 || src.includes('gstatic.com') || src.startsWith('data:image')) {
+                                if (el.naturalWidth > 50 || el.width > 50 || src.includes('gstatic.com') || src.startsWith('data:image')) {
                                     seen[src] = true;
                                     urls.push(src);
                                 }
@@ -92,58 +84,85 @@ object GoogleSearchHelper {
     }
 
     /**
-     * Curated high quality creator/photoshoot images for instant fallback
-     */
-    private val HIGH_RES_PORTRAIT_URLS = listOf(
-        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=800&q=85",
-        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=800&q=85"
-    )
-
-    /**
-     * Asynchronously extracts clean photo items.
-     * Combines Google HTML thumbnails with direct query-matched high resolution image items.
+     * Fetches high-resolution photos using multiple sources:
+     * 1. Google Images search extraction
+     * 2. Wikipedia Media API (verified, high-resolution creator/celebrity photos)
+     * 3. Curated HD fallback photography
      */
     suspend fun fetchCleanPhotos(query: String): List<PhotoItem> = withContext(Dispatchers.IO) {
         val resultList = mutableListOf<PhotoItem>()
         val seenUrls = mutableSetOf<String>()
 
+        // Strategy 1: Wikipedia high resolution API for verified creator/celebrity images
+        try {
+            val creatorName = query.split(" ").firstOrNull()?.removePrefix("@") ?: query
+            val wikiUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${URLEncoder.encode(creatorName, "UTF-8")}&gsrlimit=8&prop=pageimages&piprop=original|thumbnail&pithumbsize=1000&format=json"
+
+            val req = Request.Builder()
+                .url(wikiUrl)
+                .header("User-Agent", "ScrollSearchApp/1.0 (Android; Contact: support@example.com)")
+                .build()
+
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val jsonStr = resp.body?.string().orEmpty()
+                val json = JSONObject(jsonStr)
+                val pages = json.optJSONObject("query")?.optJSONObject("pages")
+                if (pages != null) {
+                    val keys = pages.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val pageObj = pages.getJSONObject(key)
+                        val pageTitle = pageObj.optString("title")
+                        val origObj = pageObj.optJSONObject("original")
+                        val thumbObj = pageObj.optJSONObject("thumbnail")
+                        val imgUrl = origObj?.optString("source") ?: thumbObj?.optString("source")
+                        if (!imgUrl.isNullOrBlank() && seenUrls.add(imgUrl)) {
+                            resultList.add(
+                                PhotoItem(
+                                    id = "wiki_${key}",
+                                    url = imgUrl,
+                                    title = "$pageTitle",
+                                    sourceDomain = "Wikipédia HD",
+                                    width = 800,
+                                    height = 1000
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in Wiki API extraction: ${e.message}")
+        }
+
+        // Strategy 2: Google Images HTML extraction
         try {
             val url = buildGoogleImagesUrl(query)
             val request = Request.Builder()
                 .url(url)
                 .header(
                     "User-Agent",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
                 )
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-                .header("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
+                .header("Referer", "https://www.google.com/")
                 .build()
 
             val response = client.newCall(request).execute()
             val html = response.body?.string().orEmpty()
 
-            // 1. Extract Google gstatic image thumbnails
             val tbnPattern = Pattern.compile("(https://encrypted-tbn[0-9]\\.gstatic\\.com/images\\?q=tbn:[^\\\\\"'\\s&<]+)")
             val tbnMatcher = tbnPattern.matcher(html)
             var count = 0
-            while (tbnMatcher.find() && count < 24) {
+            while (tbnMatcher.find() && count < 20) {
                 val imgUrl = tbnMatcher.group(1).replace("\\u003d", "=").replace("\\u0026", "&")
                 if (imgUrl.isNotEmpty() && seenUrls.add(imgUrl)) {
                     resultList.add(
                         PhotoItem(
-                            id = "photo_${query}_$count",
+                            id = "photo_${query.hashCode()}_$count",
                             url = imgUrl,
-                            title = "$query #$count",
+                            title = "$query #${count + 1}",
                             sourceDomain = "Google Imagens",
                             width = 600,
                             height = 800
@@ -153,12 +172,25 @@ object GoogleSearchHelper {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error in HTTP photo extraction: ${e.message}")
+            Log.e(TAG, "Error in Google HTML photo extraction: ${e.message}")
         }
 
-        // If Google raw HTTP was blocked or empty, populate with high quality photography
+        // Strategy 3: Guaranteed high-resolution photography fallback
         if (resultList.isEmpty()) {
-            HIGH_RES_PORTRAIT_URLS.forEachIndexed { index, photoUrl ->
+            val curatedHighRes = listOf(
+                "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=85",
+                "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=85",
+                "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=85",
+                "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=800&q=85",
+                "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=800&q=85",
+                "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=800&q=85",
+                "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=85",
+                "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=800&q=85",
+                "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=800&q=85",
+                "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=800&q=85"
+            )
+
+            curatedHighRes.forEachIndexed { index, photoUrl ->
                 resultList.add(
                     PhotoItem(
                         id = "hq_${query.hashCode()}_$index",

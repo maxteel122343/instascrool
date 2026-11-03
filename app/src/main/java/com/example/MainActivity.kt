@@ -1,5 +1,6 @@
 package com.example
 
+import android.Manifest
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
@@ -12,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -20,11 +22,22 @@ import com.example.service.FloatingOverlayService
 import com.example.service.InstagramAccessibilityService
 import com.example.ui.dashboard.DashboardScreen
 import com.example.ui.theme.ScrollSearchTheme
+import com.example.util.ImageDownloadHelper
 
 class MainActivity : ComponentActivity() {
 
     private var hasOverlayPermission by mutableStateOf(false)
     private var hasAccessibilityPermission by mutableStateOf(false)
+    private var hasStoragePermission by mutableStateOf(false)
+
+    private val storagePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasStoragePermission = granted
+        if (granted) {
+            Toast.makeText(this, "Permissão de armazenamento concedida! Downloads liberados.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,8 +48,10 @@ class MainActivity : ComponentActivity() {
                 DashboardScreen(
                     isOverlayPermissionGranted = hasOverlayPermission,
                     isAccessibilityServiceEnabled = hasAccessibilityPermission,
+                    isStoragePermissionGranted = hasStoragePermission,
                     onRequestOverlayPermission = { requestOverlayPermission() },
                     onRequestAccessibilityPermission = { requestAccessibilityPermission() },
+                    onRequestStoragePermission = { requestStoragePermission() },
                     onLaunchInstagram = { launchInstagram() }
                 )
             }
@@ -46,7 +61,6 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         checkPermissions()
-        // If overlay is enabled and permission is granted, auto-start overlay service
         if (hasOverlayPermission && ScrollSearchStateBus.isOverlayActive.value) {
             FloatingOverlayService.startService(this)
         }
@@ -60,6 +74,7 @@ class MainActivity : ComponentActivity() {
         }
 
         hasAccessibilityPermission = isAccessibilityServiceRunning()
+        hasStoragePermission = ImageDownloadHelper.hasStoragePermission(this)
     }
 
     private fun isAccessibilityServiceRunning(): Boolean {
@@ -95,13 +110,21 @@ class MainActivity : ComponentActivity() {
         ).show()
     }
 
+    private fun requestStoragePermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            hasStoragePermission = true
+            Toast.makeText(this, "No Android 10+, fotos são salvas diretamente na pasta Fotos/ScrollSearch!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun launchInstagram() {
         val pm = packageManager
         val intent = pm.getLaunchIntentForPackage("com.instagram.android")
         if (intent != null) {
             startActivity(intent)
         } else {
-            // Fallback: open Instagram in browser
             val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/reels/"))
             startActivity(webIntent)
             Toast.makeText(this, "Instagram não instalado. Abrindo no navegador.", Toast.LENGTH_SHORT).show()
