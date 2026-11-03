@@ -15,6 +15,9 @@ object ScrollSearchStateBus {
     private val _currentUsername = MutableStateFlow<String?>("cristiano")
     val currentUsername: StateFlow<String?> = _currentUsername.asStateFlow()
 
+    private val _isDarkTheme = MutableStateFlow(true)
+    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
+
     private val _isOverlayActive = MutableStateFlow(true)
     val isOverlayActive: StateFlow<Boolean> = _isOverlayActive.asStateFlow()
 
@@ -96,6 +99,14 @@ object ScrollSearchStateBus {
 
     fun setVersion(version: OverlayUiVersion) {
         _activeVersion.value = version
+    }
+
+    fun toggleTheme() {
+        _isDarkTheme.value = !_isDarkTheme.value
+    }
+
+    fun setDarkTheme(dark: Boolean) {
+        _isDarkTheme.value = dark
     }
 
     fun setOverlayActive(active: Boolean) {

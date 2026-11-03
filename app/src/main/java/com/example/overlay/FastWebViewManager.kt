@@ -39,7 +39,12 @@ class FastWebViewManager(private val context: Context) {
         @JavascriptInterface
         fun onReceiveImages(jsonString: String) {
             try {
-                val array = JSONArray(jsonString)
+                val clean = if (jsonString.startsWith("\"") && jsonString.endsWith("\"")) {
+                    org.json.JSONTokener(jsonString).nextValue().toString()
+                } else {
+                    jsonString
+                }
+                val array = JSONArray(clean)
                 val urls = mutableListOf<String>()
                 for (i in 0 until array.length()) {
                     val url = array.optString(i)

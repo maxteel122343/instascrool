@@ -2,11 +2,24 @@ package com.example.overlay
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.compose.ui.platform.ComposeView
 import com.example.data.ScrollSearchStateBus
 import com.example.model.OverlayUiVersion
@@ -22,6 +35,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONTokener
 
 class FloatingOverlayManager(private val context: Context) {
 
@@ -31,10 +46,19 @@ class FloatingOverlayManager(private val context: Context) {
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var composeView: ComposeView? = null
     private var viewTreeOwner: ServiceViewTreeOwner? = null
     private var fastWebViewManager: FastWebViewManager? = null
+
+    // Dedicated always-active background extraction WebView
+    // Remains active and attached across all versions (V1, V2, V5, V6, V7, F1..F7)
+    private var extractorContainer: FrameLayout? = null
+    private var extractorWebView: WebView? = null
+    private val extractedImageUrls = mutableListOf<String>()
+    private var currentExtractionQuery: String = ""
+
     private var isAttached = false
     private var fetchPhotosJob: Job? = null
 
@@ -43,6 +67,7 @@ class FloatingOverlayManager(private val context: Context) {
     private val screenHeight get() = displayMetrics.heightPixels
     private val density get() = displayMetrics.density
 
+    // Window layout params for the visible Compose UI overlay
     private val layoutParams = WindowManager.LayoutParams().apply {
         type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -61,32 +86,47 @@ class FloatingOverlayManager(private val context: Context) {
         y = 0
     }
 
+    // Window layout params for the background extractor:
+    // Fully transparent (alpha = 0f), non-focusable, and non-touchable so it NEVER blocks the app below
+    private val extractorLayoutParams = WindowManager.LayoutParams().apply {
+        type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        format = PixelFormat.TRANSLUCENT
+        flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        gravity = Gravity.TOP or Gravity.START
+        width = screenWidth
+        height = (screenHeight * 0.40f).toInt().coerceAtLeast(400)
+        x = 0
+        y = 0
+        alpha = 0f
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     fun showOverlay() {
         if (isAttached) return
 
         try {
-            fastWebViewManager = FastWebViewManager(context)
-            viewTreeOwner = ServiceViewTreeOwner()
+            // 1. Initialize always-active background Extractor WebView
+            setupExtractorWebView()
 
-            // Setup bridge to extract images directly from the working Google WebView
+            // 2. Initialize interactive FastWebViewManager (for interactive V5 and V1-expanded)
+            fastWebViewManager = FastWebViewManager(context)
             fastWebViewManager?.onImagesExtractedListener = { extractedUrls ->
                 if (extractedUrls.isNotEmpty()) {
-                    val currentQuery = ScrollSearchStateBus.getEffectiveSearchQuery()
-                    val photoItems = extractedUrls.mapIndexed { index, url ->
-                        PhotoItem(
-                            id = "extracted_${currentQuery.hashCode()}_$index",
-                            url = url,
-                            title = "$currentQuery #${index + 1}",
-                            sourceDomain = "Google Imagens",
-                            width = 800,
-                            height = 1000
-                        )
+                    scope.launch(Dispatchers.Main) {
+                        handleNewExtractedUrls(extractedUrls, currentExtractionQuery)
                     }
-                    ScrollSearchStateBus.updatePhotos(photoItems, loading = false)
                 }
             }
 
+            viewTreeOwner = ServiceViewTreeOwner()
             recalculateLayoutParams()
 
             composeView = ComposeView(context).apply {
@@ -107,12 +147,157 @@ class FloatingOverlayManager(private val context: Context) {
 
             windowManager.addView(composeView, layoutParams)
             isAttached = true
-            Log.d(TAG, "Floating overlay attached with V and F version support")
+            Log.d(TAG, "Floating overlay and background extractor attached successfully")
 
             observeStateBus()
         } catch (e: Exception) {
             Log.e(TAG, "Error displaying floating overlay: ${e.message}")
         }
+    }
+
+    /**
+     * Initializes the background Extractor WebView attached to WindowManager.
+     * With non-zero width/height, hardware acceleration, and View.VISIBLE within a 0-alpha window,
+     * the Blink/Chromium engine lays out the DOM, executes JavaScript, and extracts real images
+     * without delay, independent of which version (V or F) the user is currently viewing.
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setupExtractorWebView() {
+        try {
+            val wv = WebView(context.applicationContext).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+                visibility = View.VISIBLE
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                setBackgroundColor(0xFF12121E.toInt())
+
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    cacheMode = WebSettings.LOAD_DEFAULT
+                    useWideViewPort = true
+                    loadWithOverviewMode = true
+                    loadsImagesAutomatically = true
+                    blockNetworkImage = false
+                    mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                    userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+                }
+
+                addJavascriptInterface(ExtractorBridge(), "ScrollSearchBridge")
+
+                webViewClient = object : WebViewClient() {
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        ScrollSearchStateBus.setLoadingPhotos(true)
+                    }
+
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        view?.evaluateJavascript(GoogleSearchHelper.getCleanViewCssInjectionScript(), null)
+                        runImageExtraction(view)
+
+                        // Follow-up passes to capture asynchronously rendered thumbnails
+                        view?.postDelayed({ runImageExtraction(view) }, 300)
+                        view?.postDelayed({ runImageExtraction(view) }, 750)
+                        view?.postDelayed({ runImageExtraction(view) }, 1500)
+                    }
+
+                    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                        super.onReceivedError(view, request, error)
+                        Log.e(TAG, "Extractor WebView error: ${error?.description}")
+                    }
+                }
+
+                webChromeClient = object : WebChromeClient() {
+                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                        if (newProgress >= 40) {
+                            runImageExtraction(view)
+                        }
+                    }
+                }
+            }
+
+            val container = FrameLayout(context.applicationContext).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+                addView(wv)
+            }
+
+            extractorWebView = wv
+            extractorContainer = container
+
+            windowManager.addView(container, extractorLayoutParams)
+            Log.d(TAG, "Background Extractor WebView attached to WindowManager")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to setup background extractor WebView: ${e.message}")
+        }
+    }
+
+    private inner class ExtractorBridge {
+        @JavascriptInterface
+        fun onReceiveImages(jsonString: String) {
+            processExtractedJson(jsonString, currentExtractionQuery)
+        }
+    }
+
+    private fun runImageExtraction(view: WebView?) {
+        val script = GoogleSearchHelper.getImageExtractorScript()
+        view?.evaluateJavascript(script) { resultJson ->
+            if (!resultJson.isNullOrBlank() && resultJson != "null" && resultJson != "\"[]\"") {
+                processExtractedJson(resultJson, currentExtractionQuery)
+            }
+        }
+    }
+
+    private fun processExtractedJson(json: String, query: String) {
+        try {
+            val cleanJson = if (json.startsWith("\"") && json.endsWith("\"")) {
+                JSONTokener(json).nextValue().toString()
+            } else {
+                json
+            }
+            val array = JSONArray(cleanJson)
+            val urls = mutableListOf<String>()
+            for (i in 0 until array.length()) {
+                val u = array.optString(i)
+                if (u.isNotBlank() && (u.startsWith("http") || u.startsWith("data:image"))) {
+                    urls.add(u)
+                }
+            }
+            if (urls.isNotEmpty()) {
+                mainHandler.post {
+                    handleNewExtractedUrls(urls, query)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing extracted JSON: ${e.message}")
+        }
+    }
+
+    private fun handleNewExtractedUrls(urls: List<String>, query: String) {
+        val distinct = urls.distinct()
+        if (distinct.isEmpty()) return
+
+        extractedImageUrls.clear()
+        extractedImageUrls.addAll(distinct)
+
+        val photoItems = distinct.mapIndexed { index, url ->
+            PhotoItem(
+                id = "extracted_${query.hashCode()}_$index",
+                url = url,
+                title = "$query #${index + 1}",
+                sourceDomain = "Google Imagens",
+                width = 800,
+                height = 1000
+            )
+        }
+
+        ScrollSearchStateBus.updatePhotos(photoItems, loading = false)
+        Log.d(TAG, "Populated ${photoItems.size} photos for query '$query'")
     }
 
     private fun observeStateBus() {
@@ -187,7 +372,7 @@ class FloatingOverlayManager(private val context: Context) {
                 layoutParams.gravity = Gravity.BOTTOM or Gravity.START
                 layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
                 val v1Height = if (version == OverlayUiVersion.F1) {
-                    (210 * density).toInt() // F1: Clean large photos on bottom
+                    (210 * density).toInt()
                 } else if (isV1Expanded) {
                     (screenHeight * 0.50f).toInt()
                 } else {
@@ -262,23 +447,47 @@ class FloatingOverlayManager(private val context: Context) {
     }
 
     private fun onSearchQueryTriggered(query: String) {
-        // 1. Load in WebView (and automatically extract rendered Google images via ScrollSearchBridge)
-        fastWebViewManager?.loadSearchQuery(query)
+        val cleanQuery = query.trim().ifEmpty { "instagram" }
+        currentExtractionQuery = cleanQuery
 
-        // 2. Concurrently fetch high-res photography
+        // 1. Immediately signal loading state to all photo views (V1, V2, V6, V7, and F1..F7)
+        ScrollSearchStateBus.updatePhotos(emptyList(), loading = true)
+        extractedImageUrls.clear()
+
+        // 2. Load query into the always-active background Extractor WebView
+        val targetUrl = GoogleSearchHelper.buildGoogleImagesUrl(cleanQuery)
+        extractorWebView?.let { wv ->
+            wv.stopLoading()
+            wv.loadUrl(targetUrl)
+        }
+
+        // 3. Keep FastWebViewManager in sync for interactive V5 and V1-expanded
+        fastWebViewManager?.loadSearchQuery(cleanQuery)
+
+        // 4. Concurrently fetch high-res photography via network fallback (Wiki/HTML)
         fetchPhotosJob?.cancel()
         fetchPhotosJob = scope.launch {
-            ScrollSearchStateBus.setLoadingPhotos(true)
             delay(50)
-            val photos = GoogleSearchHelper.fetchCleanPhotos(query)
-            if (photos.isNotEmpty()) {
-                ScrollSearchStateBus.updatePhotos(photos, loading = false)
+            val fallbackPhotos = GoogleSearchHelper.fetchCleanPhotos(cleanQuery)
+            if (fallbackPhotos.isNotEmpty()) {
+                val current = ScrollSearchStateBus.photos.value
+                if (current.isEmpty()) {
+                    ScrollSearchStateBus.updatePhotos(fallbackPhotos, loading = false)
+                } else {
+                    val merged = (current + fallbackPhotos).distinctBy { it.url }
+                    ScrollSearchStateBus.updatePhotos(merged, loading = false)
+                }
             }
         }
     }
 
     fun cleanResetWebView() {
         fastWebViewManager?.cleanRecreate()
+        extractorWebView?.let { wv ->
+            wv.clearCache(false)
+            val query = ScrollSearchStateBus.getEffectiveSearchQuery()
+            wv.loadUrl(GoogleSearchHelper.buildGoogleImagesUrl(query))
+        }
     }
 
     fun hideOverlay() {
@@ -291,12 +500,22 @@ class FloatingOverlayManager(private val context: Context) {
             composeView?.let { view ->
                 windowManager.removeView(view)
             }
+            extractorContainer?.let { container ->
+                windowManager.removeView(container)
+            }
+            extractorWebView?.let { wv ->
+                (wv.parent as? ViewGroup)?.removeView(wv)
+                wv.stopLoading()
+                wv.destroy()
+            }
             viewTreeOwner?.destroy()
             fastWebViewManager?.destroy()
         } catch (e: Exception) {
             Log.e(TAG, "Error hiding floating overlay: ${e.message}")
         } finally {
             composeView = null
+            extractorContainer = null
+            extractorWebView = null
             viewTreeOwner = null
             fastWebViewManager = null
             isAttached = false

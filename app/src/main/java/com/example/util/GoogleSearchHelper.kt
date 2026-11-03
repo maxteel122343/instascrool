@@ -65,20 +65,33 @@ object GoogleSearchHelper {
                     var imgs = document.querySelectorAll('img');
                     for (var i = 0; i < imgs.length; i++) {
                         var el = imgs[i];
-                        var src = el.src || el.getAttribute('data-src') || el.getAttribute('src');
+                        var src = el.src || el.getAttribute('data-src') || el.getAttribute('data-iurl') || el.getAttribute('src');
                         if (src && !seen[src]) {
-                            if (!src.includes('googlelogo') && !src.includes('cleardot') && !src.includes('arrow_') && !src.includes('quantum')) {
-                                if (el.naturalWidth > 50 || el.width > 50 || src.includes('gstatic.com') || src.startsWith('data:image')) {
+                            if (!src.includes('googlelogo') && !src.includes('cleardot') && !src.includes('arrow_') && !src.includes('quantum') && !src.includes('favicon')) {
+                                if (src.includes('gstatic.com') || src.startsWith('data:image') || src.startsWith('http') || (el.naturalWidth && el.naturalWidth > 40) || (el.width && el.width > 40)) {
                                     seen[src] = true;
                                     urls.push(src);
                                 }
                             }
                         }
                     }
-                    if (window.ScrollSearchBridge && urls.length > 0) {
-                        window.ScrollSearchBridge.onReceiveImages(JSON.stringify(urls));
+                    var extraElements = document.querySelectorAll('[data-src], [data-iurl]');
+                    for (var j = 0; j < extraElements.length; j++) {
+                        var elem = extraElements[j];
+                        var dSrc = elem.getAttribute('data-src') || elem.getAttribute('data-iurl');
+                        if (dSrc && !seen[dSrc] && (dSrc.startsWith('http') || dSrc.startsWith('data:image'))) {
+                            seen[dSrc] = true;
+                            urls.push(dSrc);
+                        }
                     }
-                } catch(e) {}
+                    var jsonStr = JSON.stringify(urls);
+                    if (window.ScrollSearchBridge && urls.length > 0) {
+                        window.ScrollSearchBridge.onReceiveImages(jsonStr);
+                    }
+                    return jsonStr;
+                } catch(e) {
+                    return "[]";
+                }
             })();
         """.trimIndent()
     }
@@ -156,7 +169,8 @@ object GoogleSearchHelper {
             val tbnMatcher = tbnPattern.matcher(html)
             var count = 0
             while (tbnMatcher.find() && count < 20) {
-                val imgUrl = tbnMatcher.group(1).replace("\\u003d", "=").replace("\\u0026", "&")
+                val rawGroup = tbnMatcher.group(1) ?: continue
+                val imgUrl = rawGroup.replace("\\u003d", "=").replace("\\u0026", "&")
                 if (imgUrl.isNotEmpty() && seenUrls.add(imgUrl)) {
                     resultList.add(
                         PhotoItem(
