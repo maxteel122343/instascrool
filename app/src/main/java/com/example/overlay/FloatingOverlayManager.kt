@@ -10,6 +10,7 @@ import android.view.WindowManager
 import androidx.compose.ui.platform.ComposeView
 import com.example.data.ScrollSearchStateBus
 import com.example.model.OverlayUiVersion
+import com.example.model.PhotoItem
 import com.example.ui.overlay.OverlayRootComposable
 import com.example.util.GoogleSearchHelper
 import kotlinx.coroutines.CoroutineScope
@@ -50,7 +51,6 @@ class FloatingOverlayManager(private val context: Context) {
             WindowManager.LayoutParams.TYPE_PHONE
         }
         format = PixelFormat.TRANSLUCENT
-        // Crucial: FLAG_NOT_TOUCH_MODAL allows all touches outside this window to pass to Instagram/TikTok
         flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
@@ -69,7 +69,24 @@ class FloatingOverlayManager(private val context: Context) {
             fastWebViewManager = FastWebViewManager(context)
             viewTreeOwner = ServiceViewTreeOwner()
 
-            // Calculate initial dimensions based on current state
+            // Setup bridge to extract images directly from the working Google WebView
+            fastWebViewManager?.onImagesExtractedListener = { extractedUrls ->
+                if (extractedUrls.isNotEmpty()) {
+                    val currentQuery = ScrollSearchStateBus.getEffectiveSearchQuery()
+                    val photoItems = extractedUrls.mapIndexed { index, url ->
+                        PhotoItem(
+                            id = "extracted_${currentQuery.hashCode()}_$index",
+                            url = url,
+                            title = "$currentQuery #${index + 1}",
+                            sourceDomain = "Google Imagens",
+                            width = 800,
+                            height = 1000
+                        )
+                    }
+                    ScrollSearchStateBus.updatePhotos(photoItems, loading = false)
+                }
+            }
+
             recalculateLayoutParams()
 
             composeView = ComposeView(context).apply {
@@ -90,7 +107,7 @@ class FloatingOverlayManager(private val context: Context) {
 
             windowManager.addView(composeView, layoutParams)
             isAttached = true
-            Log.d(TAG, "Floating overlay attached with pass-through touch configuration")
+            Log.d(TAG, "Floating overlay attached with V and F version support")
 
             observeStateBus()
         } catch (e: Exception) {
@@ -99,21 +116,18 @@ class FloatingOverlayManager(private val context: Context) {
     }
 
     private fun observeStateBus() {
-        // Toggle keyboard focusable mode on search focus
         ScrollSearchStateBus.setOnRequestFocusToggle { focused ->
             updateFocusableMode(focused)
         }
 
-        // Query change listener (reusing webview and fetching clean photos)
         ScrollSearchStateBus.setOnQueryChangedListener { query ->
             onSearchQueryTriggered(query)
         }
 
-        // Initial search load
         val initialQuery = ScrollSearchStateBus.getEffectiveSearchQuery()
         onSearchQueryTriggered(initialQuery)
 
-        // Observe layout-changing states (collapsed bubble, active version, height ratio, photo detail, v1 webview)
+        // Observe layout changes for all V and F versions
         scope.launch {
             combine(
                 ScrollSearchStateBus.isBubbleCollapsed,
@@ -138,10 +152,7 @@ class FloatingOverlayManager(private val context: Context) {
     ) {
         val isFocused = ScrollSearchStateBus.isSearchFocused.value
 
-        // Base flags: NEVER capture entire screen touches. Always allow touches outside to pass to underlying app!
         val baseFlags = if (isFocused) {
-            // When user types in search bar, remove FLAG_NOT_FOCUSABLE so keyboard works,
-            // but keep FLAG_NOT_TOUCH_MODAL so touches outside the window boundary still go through.
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
         } else {
@@ -152,7 +163,6 @@ class FloatingOverlayManager(private val context: Context) {
         layoutParams.flags = baseFlags
 
         if (isPhotoDetail) {
-            // Fullscreen preview only while inspecting a photo
             layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
             layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
             layoutParams.gravity = Gravity.CENTER
@@ -162,7 +172,6 @@ class FloatingOverlayManager(private val context: Context) {
         }
 
         if (collapsed) {
-            // Minimized floating bubble/pill takes only WRAP_CONTENT
             layoutParams.width = WindowManager.LayoutParams.WRAP_CONTENT
             layoutParams.height = WindowManager.LayoutParams.WRAP_CONTENT
             layoutParams.gravity = Gravity.TOP or Gravity.START
@@ -171,13 +180,15 @@ class FloatingOverlayManager(private val context: Context) {
             return
         }
 
-        // Expanded layouts strictly sized to their view area
         when (version) {
-            OverlayUiVersion.V1 -> {
-                // V1: Barra inferior com cards
+            // V1 and F1: Bottom bar layouts
+            OverlayUiVersion.V1,
+            OverlayUiVersion.F1 -> {
                 layoutParams.gravity = Gravity.BOTTOM or Gravity.START
                 layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
-                val v1Height = if (isV1Expanded) {
+                val v1Height = if (version == OverlayUiVersion.F1) {
+                    (210 * density).toInt() // F1: Clean large photos on bottom
+                } else if (isV1Expanded) {
                     (screenHeight * 0.50f).toInt()
                 } else {
                     (225 * density).toInt()
@@ -187,8 +198,9 @@ class FloatingOverlayManager(private val context: Context) {
                 layoutParams.y = 0
             }
 
-            OverlayUiVersion.V2 -> {
-                // V2: Sidebar lateral fixada na direita
+            // V2 and F2: Sidebar layouts on right edge
+            OverlayUiVersion.V2,
+            OverlayUiVersion.F2 -> {
                 layoutParams.gravity = Gravity.END or Gravity.CENTER_VERTICAL
                 layoutParams.width = (220 * density).toInt().coerceAtMost((screenWidth * 0.60f).toInt())
                 layoutParams.height = (screenHeight * 0.75f).toInt()
@@ -196,12 +208,13 @@ class FloatingOverlayManager(private val context: Context) {
                 layoutParams.y = 0
             }
 
+            // V5, V6, V7 and F5, F6, F7: Resizable bottom panels
             OverlayUiVersion.V5,
             OverlayUiVersion.V6,
-            OverlayUiVersion.V7 -> {
-                // Resizable bottom panels (V5 Bottom Sheet, V6 Fotos Vertical, V7 Fotos Horizontal)
-                // The window only takes the bottom portion (heightRatio of screen),
-                // leaving the top area entirely untouched and open to Instagram/TikTok gestures!
+            OverlayUiVersion.V7,
+            OverlayUiVersion.F5,
+            OverlayUiVersion.F6,
+            OverlayUiVersion.F7 -> {
                 layoutParams.gravity = Gravity.BOTTOM or Gravity.START
                 layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
                 val panelHeight = (screenHeight * ratio).toInt().coerceIn(
@@ -249,16 +262,18 @@ class FloatingOverlayManager(private val context: Context) {
     }
 
     private fun onSearchQueryTriggered(query: String) {
-        // Fast WebView reuse (Requirement 1: do not recreate webview, only update url)
+        // 1. Load in WebView (and automatically extract rendered Google images via ScrollSearchBridge)
         fastWebViewManager?.loadSearchQuery(query)
 
-        // Asynchronously extract clean photos for V6 & V7 (no google clutter)
+        // 2. Concurrently fetch high-res photography
         fetchPhotosJob?.cancel()
         fetchPhotosJob = scope.launch {
             ScrollSearchStateBus.setLoadingPhotos(true)
-            delay(50) // Small debounce for smooth UI
+            delay(50)
             val photos = GoogleSearchHelper.fetchCleanPhotos(query)
-            ScrollSearchStateBus.updatePhotos(photos, loading = false)
+            if (photos.isNotEmpty()) {
+                ScrollSearchStateBus.updatePhotos(photos, loading = false)
+            }
         }
     }
 

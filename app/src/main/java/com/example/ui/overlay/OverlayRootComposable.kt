@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -14,8 +18,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -23,6 +29,12 @@ import com.example.data.ScrollSearchStateBus
 import com.example.model.OverlayUiVersion
 import com.example.model.PhotoItem
 import com.example.overlay.FastWebViewManager
+import com.example.ui.overlay.views.F1PurePhotoView
+import com.example.ui.overlay.views.F2PurePhotoView
+import com.example.ui.overlay.views.F5PurePhotoView
+import com.example.ui.overlay.views.F6PurePhotoView
+import com.example.ui.overlay.views.F7PurePhotoView
+import com.example.ui.overlay.views.PureFloatingControlsPill
 import com.example.ui.overlay.views.V1BottomBarView
 import com.example.ui.overlay.views.V2SidebarView
 import com.example.ui.overlay.views.V5BottomSheetView
@@ -55,7 +67,7 @@ fun OverlayRootComposable(
 
     ScrollSearchTheme {
         if (isBubbleCollapsed) {
-            // Minimized floating pill docked to edge - window is WRAP_CONTENT
+            // Minimized floating pill docked to edge
             FloatingBubbleView(
                 username = username,
                 onExpand = {
@@ -74,8 +86,153 @@ fun OverlayRootComposable(
                 }
             )
         } else {
-            // Expanded overlay views - the window bounds match the active view exactly
+            // Main Overlay (V versions with tools or F versions with pure photos)
             when (activeVersion) {
+                // ==========================================
+                // F VERSIONS (PURE CLEAN HIGH QUALITY PHOTOS)
+                // ==========================================
+                OverlayUiVersion.F1 -> {
+                    // F1: Barra Inferior - Só Fotos Grandes Horizontais
+                    Box(modifier = modifier.fillMaxSize()) {
+                        F1PurePhotoView(
+                            photos = photos,
+                            isLoading = isLoadingPhotos,
+                            onPhotoClick = {
+                                selectedPhotoDetail = it
+                                ScrollSearchStateBus.setPhotoDetailOpen(true)
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        PureFloatingControlsPill(
+                            currentVersion = activeVersion,
+                            username = username,
+                            onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
+                            onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
+                            onClose = onCloseOverlay,
+                            onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() },
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        )
+                    }
+                }
+
+                OverlayUiVersion.F2 -> {
+                    // F2: Sidebar Lateral - Só Fotos Verticais
+                    Box(modifier = modifier.fillMaxSize()) {
+                        F2PurePhotoView(
+                            photos = photos,
+                            isLoading = isLoadingPhotos,
+                            onPhotoClick = {
+                                selectedPhotoDetail = it
+                                ScrollSearchStateBus.setPhotoDetailOpen(true)
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        PureFloatingControlsPill(
+                            currentVersion = activeVersion,
+                            username = username,
+                            onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
+                            onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
+                            onClose = onCloseOverlay,
+                            onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() },
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        )
+                    }
+                }
+
+                OverlayUiVersion.F5,
+                OverlayUiVersion.F6,
+                OverlayUiVersion.F7 -> {
+                    // F5, F6, F7: Painéis Inferiores Redimensionáveis com Fotos Puras
+                    Box(
+                        modifier = modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    ) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // Top border resize handle
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(20.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f))
+                                    .pointerInput(Unit) {
+                                        detectVerticalDragGestures { change, dragAmount ->
+                                            change.consume()
+                                            val deltaRatio = -dragAmount / 1200f
+                                            ScrollSearchStateBus.setHeightRatio(heightRatio + deltaRatio)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(44.dp)
+                                        .height(4.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.4f))
+                                )
+                            }
+
+                            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                                when (activeVersion) {
+                                    OverlayUiVersion.F5 -> {
+                                        F5PurePhotoView(
+                                            photos = photos,
+                                            isLoading = isLoadingPhotos,
+                                            onPhotoClick = {
+                                                selectedPhotoDetail = it
+                                                ScrollSearchStateBus.setPhotoDetailOpen(true)
+                                            },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    OverlayUiVersion.F6 -> {
+                                        F6PurePhotoView(
+                                            photos = photos,
+                                            isLoading = isLoadingPhotos,
+                                            onPhotoClick = {
+                                                selectedPhotoDetail = it
+                                                ScrollSearchStateBus.setPhotoDetailOpen(true)
+                                            },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    OverlayUiVersion.F7 -> {
+                                        F7PurePhotoView(
+                                            photos = photos,
+                                            isLoading = isLoadingPhotos,
+                                            onPhotoClick = {
+                                                selectedPhotoDetail = it
+                                                ScrollSearchStateBus.setPhotoDetailOpen(true)
+                                            },
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    else -> Unit
+                                }
+                            }
+                        }
+
+                        // Minimalist floating control pill
+                        PureFloatingControlsPill(
+                            currentVersion = activeVersion,
+                            username = username,
+                            onVersionSelected = { ScrollSearchStateBus.setVersion(it) },
+                            onMinimize = { ScrollSearchStateBus.setBubbleCollapsed(true) },
+                            onClose = onCloseOverlay,
+                            onRefresh = { ScrollSearchStateBus.notifyEffectiveQueryChanged() },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 16.dp)
+                        )
+                    }
+                }
+
+                // ==========================================
+                // V VERSIONS (STANDARD CONTROLS & WEBVIEWS)
+                // ==========================================
                 OverlayUiVersion.V2 -> {
                     // V2: Sidebar lateral layout
                     Surface(
@@ -180,7 +337,7 @@ fun OverlayRootComposable(
                 OverlayUiVersion.V5,
                 OverlayUiVersion.V6,
                 OverlayUiVersion.V7 -> {
-                    // Resizable bottom panels (V5 Bottom Sheet, V6 Fotos Vertical, V7 Fotos Horizontal)
+                    // V5, V6, V7: Bottom panels com redimensionamento
                     Surface(
                         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                         color = DarkSurface,
@@ -190,14 +347,12 @@ fun OverlayRootComposable(
                             .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                     ) {
                         Column(modifier = Modifier.fillMaxSize()) {
-                            // Top Border Drag Handle for physical window height resizing
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .pointerInput(Unit) {
                                         detectVerticalDragGestures { change, dragAmount ->
                                             change.consume()
-                                            // Dragging upwards increases window height ratio
                                             val deltaRatio = -dragAmount / 1200f
                                             ScrollSearchStateBus.setHeightRatio(heightRatio + deltaRatio)
                                         }

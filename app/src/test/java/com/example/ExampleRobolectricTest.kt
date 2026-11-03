@@ -31,8 +31,18 @@ class ExampleRobolectricTest {
         val effectiveQuery = ScrollSearchStateBus.getEffectiveSearchQuery()
         assertEquals("zendaya model", effectiveQuery)
 
-        ScrollSearchStateBus.setVersion(OverlayUiVersion.V6)
-        assertEquals(OverlayUiVersion.V6, ScrollSearchStateBus.activeVersion.value)
+        ScrollSearchStateBus.setVersion(OverlayUiVersion.F7)
+        assertEquals(OverlayUiVersion.F7, ScrollSearchStateBus.activeVersion.value)
+        assertTrue(ScrollSearchStateBus.activeVersion.value.isCleanPhotoOnly)
+    }
+
+    @Test
+    fun `test all F and V versions available`() {
+        val fVersions = OverlayUiVersion.entries.filter { it.isCleanPhotoOnly }
+        assertEquals(5, fVersions.size) // F1, F2, F5, F6, F7
+
+        val vVersions = OverlayUiVersion.entries.filter { !it.isCleanPhotoOnly }
+        assertEquals(5, vVersions.size) // V1, V2, V5, V6, V7
     }
 
     @Test

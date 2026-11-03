@@ -3,10 +3,13 @@ package com.example.overlay
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -14,19 +17,45 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.example.util.GoogleSearchHelper
+import org.json.JSONArray
 
 class FastWebViewManager(private val context: Context) {
 
     private var webView: WebView? = null
     private var currentUrl: String? = null
     private var lastLoadTimestamp: Long = 0L
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     var onPageStartedListener: (() -> Unit)? = null
     var onPageFinishedListener: (() -> Unit)? = null
     var onErrorListener: ((String) -> Unit)? = null
+    var onImagesExtractedListener: ((List<String>) -> Unit)? = null
 
     init {
         initWebView()
+    }
+
+    private inner class ScrollSearchBridge {
+        @JavascriptInterface
+        fun onReceiveImages(jsonString: String) {
+            try {
+                val array = JSONArray(jsonString)
+                val urls = mutableListOf<String>()
+                for (i in 0 until array.length()) {
+                    val url = array.optString(i)
+                    if (url.isNotBlank() && (url.startsWith("http") || url.startsWith("data:image"))) {
+                        urls.add(url)
+                    }
+                }
+                if (urls.isNotEmpty()) {
+                    mainHandler.post {
+                        onImagesExtractedListener?.invoke(urls)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("FastWebViewManager", "Bridge JSON error: ${e.message}")
+            }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -55,6 +84,9 @@ class FastWebViewManager(private val context: Context) {
                     mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 }
 
+                // Add Javascript interface to extract images directly from the loaded Google page
+                addJavascriptInterface(ScrollSearchBridge(), "ScrollSearchBridge")
+
                 webViewClient = object : WebViewClient() {
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
@@ -63,8 +95,10 @@ class FastWebViewManager(private val context: Context) {
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        // Inject clean styling to remove Google clutter and headers
+                        // Inject clean styling
                         view?.evaluateJavascript(GoogleSearchHelper.getCleanViewCssInjectionScript(), null)
+                        // Extract images from the rendered page
+                        view?.evaluateJavascript(GoogleSearchHelper.getImageExtractorScript(), null)
                         onPageFinishedListener?.invoke()
                     }
 
@@ -82,6 +116,7 @@ class FastWebViewManager(private val context: Context) {
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                         if (newProgress > 60) {
                             view?.evaluateJavascript(GoogleSearchHelper.getCleanViewCssInjectionScript(), null)
+                            view?.evaluateJavascript(GoogleSearchHelper.getImageExtractorScript(), null)
                         }
                     }
                 }
@@ -106,7 +141,8 @@ class FastWebViewManager(private val context: Context) {
     fun loadSearchQuery(query: String) {
         val targetUrl = GoogleSearchHelper.buildGoogleImagesUrl(query)
         if (targetUrl == currentUrl) {
-            // Already loaded this query
+            // Re-trigger extractor if already loaded
+            webView?.evaluateJavascript(GoogleSearchHelper.getImageExtractorScript(), null)
             return
         }
 

@@ -280,10 +280,93 @@ fun DashboardScreen(
                 }
             }
 
-            // Version Selector (V1, V2, V5, V6, V7)
+            // Version Selector (F1-F7 Pure Photos & V1-V7 Tools)
             item {
                 Text(
-                    text = "Versão de Interface (Otimizadas)",
+                    text = "Versões F — Só Fotos Grandes (Sem Google)",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+                Text(
+                    text = "Foco total na imagem limpa: sem header, sem barras, sem Google, tela limpa",
+                    color = IgOrange,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OverlayUiVersion.entries.filter { it.isCleanPhotoOnly }.forEach { version ->
+                        val isSelected = activeVersion == version
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) IgOrange.copy(alpha = 0.2f) else DarkSurface,
+                            border = if (isSelected) {
+                                androidx.compose.foundation.BorderStroke(1.5.dp, IgOrange)
+                            } else null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable {
+                                    ScrollSearchStateBus.setVersion(version)
+                                }
+                                .testTag("select_version_${version.code}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) IgOrange else DarkSurfaceElevated),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = version.code,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "${version.code}: ${version.title}",
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = version.subtitle,
+                                        color = Color(0xFFA0A0C0),
+                                        fontSize = 11.sp
+                                    )
+                                }
+
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selecionado",
+                                        tint = IgOrange,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Versões V — Com Controles e Google Web",
                     color = Color.White,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
@@ -293,7 +376,7 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OverlayUiVersion.entries.forEach { version ->
+                    OverlayUiVersion.entries.filter { !it.isCleanPhotoOnly }.forEach { version ->
                         val isSelected = activeVersion == version
                         Surface(
                             shape = RoundedCornerShape(14.dp),
@@ -315,7 +398,7 @@ fun DashboardScreen(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
+                                        .size(38.dp)
                                         .clip(CircleShape)
                                         .background(if (isSelected) IgPink else DarkSurfaceElevated),
                                     contentAlignment = Alignment.Center
